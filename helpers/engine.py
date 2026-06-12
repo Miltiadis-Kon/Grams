@@ -12,11 +12,11 @@ from typing import Any, Optional
 
 from config import DB_FILE_PATH, DATA_DIR
 from database import RecipeDatabase
-from ingester import TikTokIngester
-from nutrition import NutritionAnalyzer
-from query import QueryInterface
-from sync import SyncPipeline
-from tagger import AutoTagger
+from .ingester import TikTokIngester
+from .nutrition import NutritionAnalyzer
+from .query import QueryInterface
+from .sync import SyncPipeline
+from .tagger import AutoTagger
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,13 @@ class RecipeEngine:
         Returns batch stats.
         """
         return self._ingester.ingest_playlist(playlist_url)
+
+    def ingest_tiktok_playlist_detailed(self, playlist_url: str, delay_seconds: float = 5.0) -> dict[str, int]:
+        """
+        Scrape a TikTok playlist, scan for video URLs, and ingest each detailed recipe page
+        slowly (delaying between requests) only if not already present in the database.
+        """
+        return self._ingester.ingest_playlist_detailed(playlist_url, delay_seconds)
 
     def ingest_tiktok_video(self, video_url: str) -> bool:
         """Ingest a single TikTok video by URL."""

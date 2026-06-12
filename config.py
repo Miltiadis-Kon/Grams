@@ -12,7 +12,7 @@ import os
 # ──────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_FILE_PATH = os.path.join(BASE_DIR, "recipes_db.json")
+DB_FILE_PATH = os.path.join(BASE_DIR, "database", "recipes_db.json")
 
 # OpenNutrition dataset
 OPENNUTRITION_DB_PATH = os.path.join(DATA_DIR, "opennutrition.db")
@@ -36,6 +36,7 @@ HTTP_MAX_RETRIES = 3
 PLAYWRIGHT_HEADLESS = True
 TIKTOK_SCROLL_PAUSE_SEC = 2.0
 TIKTOK_MAX_SCROLL_ATTEMPTS = 50
+TIKTOK_INGEST_DELAY_SEC = 5.0
 
 # ──────────────────────────────────────────────
 # Auto-Tagger: Keyword → Tag mapping

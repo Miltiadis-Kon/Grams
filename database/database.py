@@ -14,7 +14,7 @@ import tempfile
 import threading
 from typing import Optional
 
-from models import Recipe
+from .models import Recipe
 
 logger = logging.getLogger(__name__)
 

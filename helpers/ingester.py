@@ -23,6 +23,7 @@ from config import (
     TIKTOK_COOKIES_PATH,
     TIKTOK_MAX_SCROLL_ATTEMPTS,
     TIKTOK_SCROLL_PAUSE_SEC,
+    TIKTOK_INGEST_DELAY_SEC,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,133 @@ class TikTokIngester:
             })
 
         return self._pipeline.process_batch(items)
+
+    def ingest_playlist_detailed(
+        self, playlist_url: str, delay_seconds: float = TIKTOK_INGEST_DELAY_SEC
+    ) -> dict[str, int]:
+        """
+        Scrapes all video URLs from a playlist. For each video not already in the database,
+        visits the individual video page to fetch the full description, parses it, and adds it.
+        Waits `delay_seconds` between newly processed videos to avoid rate limits.
+        """
+        stats = {"added": 0, "skipped": 0, "errors": 0}
+
+        video_links = self._extract_playlist_links(playlist_url)
+        if not video_links:
+            logger.warning("No video links discovered in playlist: %s", playlist_url)
+            return stats
+
+        logger.info(
+            "Found %d video links in playlist. Starting detailed slow ingestion...",
+            len(video_links),
+        )
+
+        for idx, item in enumerate(video_links):
+            video_id = item["id"]
+            video_url = item["url"]
+
+            # O(1) skip check before hitting the network for this video
+            if self._pipeline._db.exists(video_id):
+                logger.info(
+                    "[%d/%d] SKIP: Video ID %s already exists in database",
+                    idx + 1,
+                    len(video_links),
+                    video_id,
+                )
+                stats["skipped"] += 1
+                continue
+
+            logger.info(
+                "[%d/%d] PROCESSING NEW VIDEO: %s",
+                idx + 1,
+                len(video_links),
+                video_url,
+            )
+            try:
+                added = self.ingest_single(video_url)
+                if added:
+                    stats["added"] += 1
+                    logger.info(
+                        "Added video %s. Sleeping for %.1f seconds...",
+                        video_id,
+                        delay_seconds,
+                    )
+                    time.sleep(delay_seconds)
+                else:
+                    logger.warning("Skipped / failed to add video %s", video_id)
+                    stats["skipped"] += 1
+            except Exception as exc:
+                logger.error("Error ingesting video %s: %s", video_id, exc)
+                stats["errors"] += 1
+
+        return stats
+
+    def _extract_playlist_links(self, playlist_url: str) -> list[dict[str, str]]:
+        """
+        Loads the playlist page using Playwright, scrolls to load all videos,
+        and extracts only their IDs and URLs.
+        """
+        from playwright.sync_api import sync_playwright
+
+        videos = []
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=PLAYWRIGHT_HEADLESS)
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                viewport={"width": 1280, "height": 720},
+            )
+
+            cookies = self._load_cookies()
+            if cookies:
+                context.add_cookies(cookies)
+
+            page = context.new_page()
+            try:
+                logger.info("Scanning playlist for video links: %s", playlist_url)
+                page.goto(playlist_url, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(3000)
+
+                previous_count = 0
+                for scroll_attempt in range(TIKTOK_MAX_SCROLL_ATTEMPTS):
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    time.sleep(TIKTOK_SCROLL_PAUSE_SEC)
+
+                    video_links = page.query_selector_all('a[href*="/video/"]')
+                    current_count = len(video_links)
+
+                    if current_count > previous_count:
+                        previous_count = current_count
+                        logger.debug(
+                            "Scroll %d: found %d video links",
+                            scroll_attempt + 1,
+                            current_count,
+                        )
+                    else:
+                        logger.info("Scan complete: %d video links found", current_count)
+                        break
+
+                seen_ids = set()
+                for link in page.query_selector_all('a[href*="/video/"]'):
+                    href = link.get_attribute("href") or ""
+                    video_id = self._extract_video_id(href)
+
+                    if not video_id or video_id in seen_ids:
+                        continue
+                    seen_ids.add(video_id)
+
+                    full_url = href if href.startswith("http") else f"https://www.tiktok.com{href}"
+                    videos.append({"id": video_id, "url": full_url})
+
+            except Exception as exc:
+                logger.error("Failed scanning playlist video links: %s", exc)
+            finally:
+                browser.close()
+
+        return videos
 
     def ingest_single(self, video_url: str) -> bool:
         """

@@ -6,14 +6,14 @@ import tempfile
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_url_path='', static_folder='interface')
 
-DB_FILE_PATH = os.path.join(os.path.dirname(__abspath__ := os.path.abspath(__file__)), "recipes_db.json")
+DB_FILE_PATH = os.path.join(os.path.dirname(__abspath__ := os.path.abspath(__file__)), "database", "recipes_db.json")
 NUTRITION_DB_PATH = os.path.join(os.path.dirname(__abspath__), "data", "opennutrition.db")
 
 def calculate_recipe_macros_from_ingredients(ingredients):
     try:
-        from nutrition import NutritionAnalyzer
+        from helpers.nutrition import NutritionAnalyzer
         analyzer = NutritionAnalyzer()
     except Exception as e:
         print(f"Could not load NutritionAnalyzer: {e}")
@@ -99,7 +99,7 @@ def save_barcode_to_local_db(barcode, name, protein, carbs, fats, calories):
 
 @app.route('/')
 def index():
-    return send_from_directory('.', 'recipe_filter.html')
+    return send_from_directory('interface', 'index.html')
 
 @app.route('/recipes_db.json')
 def get_db():

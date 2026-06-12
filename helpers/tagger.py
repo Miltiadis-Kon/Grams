@@ -19,7 +19,7 @@ from config import (
     TAG_KETO_FATS_MIN,
     TAG_LOW_CALORIE_MAX,
 )
-from models import Recipe
+from database import Recipe
 
 logger = logging.getLogger(__name__)
 

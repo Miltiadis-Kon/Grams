@@ -29,7 +29,7 @@ from config import (
     OPENNUTRITION_TSV_PATH,
     OPENNUTRITION_ZIP_URL,
 )
-from models import MacroNutrients
+from database import MacroNutrients
 
 logger = logging.getLogger(__name__)
 

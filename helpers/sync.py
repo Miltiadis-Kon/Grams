@@ -12,10 +12,9 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
-from database import RecipeDatabase
-from models import MacroNutrients, Recipe
-from nutrition import NutritionAnalyzer
-from tagger import AutoTagger
+from database import RecipeDatabase, MacroNutrients, Recipe
+from .nutrition import NutritionAnalyzer
+from .tagger import AutoTagger
 
 logger = logging.getLogger(__name__)
 
