@@ -110,5 +110,15 @@ class RecipeDatabase:
         with self._lock:
             return len(self._data)
 
+    def delete(self, recipe_id: str) -> bool:
+        """Remove a recipe by its ID from the database. Returns True if removed, False otherwise."""
+        with self._lock:
+            if recipe_id in self._data:
+                del self._data[recipe_id]
+                self._save()
+                logger.info("Deleted recipe '%s'", recipe_id)
+                return True
+            return False
+
     def __repr__(self) -> str:
         return f"<RecipeDatabase records={self.count()} path='{self._db_path}'>"

@@ -214,6 +214,31 @@ class NutritionAnalyzer:
 
     # ── Public API ───────────────────────────────────
 
+    def _translate_if_greek(self, text: str) -> str:
+        """Translate text to English if it contains Greek characters."""
+        if not text:
+            return text
+        # Detect Greek characters
+        if re.search(r'[\u0370-\u03ff\u1f00-\u1fff]', text):
+            try:
+                from translate import Translator
+                if not hasattr(self, '_translator'):
+                    self._translator = Translator(from_lang="el", to_lang="en")
+                if not hasattr(self, '_translation_cache'):
+                    self._translation_cache = {}
+                
+                cleaned_text = text.strip().lower()
+                if cleaned_text in self._translation_cache:
+                    return self._translation_cache[cleaned_text]
+                
+                translated = self._translator.translate(text)
+                logger.info("Translated Greek ingredient '%s' to English '%s'", text, translated)
+                self._translation_cache[cleaned_text] = translated
+                return translated
+            except Exception as exc:
+                logger.warning("Translation failed for '%s': %s", text, exc)
+        return text
+
     def lookup_food(self, query: str) -> Optional[MacroNutrients]:
         """
         Search the OpenNutrition database for a food item by name.
@@ -223,12 +248,15 @@ class NutritionAnalyzer:
         if self._conn is None:
             return None
 
+        # Translate Greek queries to English first so they can match the English foods DB
+        query_en = self._translate_if_greek(query)
+
         try:
             cur = self._conn.cursor()
             # Clean and sanitize the FTS5 query to avoid punctuation errors
-            sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', query)
+            sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_en)
             sanitized = ' '.join(sanitized.split()).strip()
-            if not sanitized:
+            if not sanitized or not re.search(r'[a-zA-Z]', sanitized):
                 return None
 
             # Try exact phrase match first, then token match
@@ -254,8 +282,8 @@ class NutritionAnalyzer:
                         calories=int(energy) if energy else 0,
                         serving=serving
                     )
-                    logger.debug("Matched '%s' → P:%.1f C:%.1f F:%.1f Cal:%d",
-                                 query, protein, carbs, fat, energy)
+                    logger.debug("Matched '%s' (translated from '%s') → P:%.1f C:%.1f F:%.1f Cal:%d",
+                                 query_en, query, protein, carbs, fat, energy)
                     return macros
 
         except sqlite3.OperationalError as exc:
@@ -283,9 +311,10 @@ class NutritionAnalyzer:
         # First, try to extract and parse the ingredients list
         ingredients_list = []
         sentences = []
+        has_header = False
         try:
             from ingredient_parser import parse_ingredient
-            ingredients_block = self._extract_ingredients_text(desc_clean)
+            ingredients_block, has_header = self._extract_ingredients_text(desc_clean)
             sentences = self._split_ingredients(ingredients_block)
             for sentence in sentences:
                 try:
@@ -302,6 +331,12 @@ class NutritionAnalyzer:
                 if result.amount:
                     amount_str = result.amount[0].text.strip()
 
+                # If there is no ingredients header (e.g., parsing a raw transcript),
+                # ONLY keep items that have a parsed quantity. This prevents parsing
+                # random narrative text sentences as ingredients.
+                if not has_header and not amount_str:
+                    continue
+
                 ingredients_list.append({
                     "name": name_str,
                     "quantity": amount_str
@@ -312,8 +347,8 @@ class NutritionAnalyzer:
 
         # 1. Try direct regex macro extraction
         cal_patterns = [
-            r'(?:calories|cal|kcal|energy)[:\-\s]*(\d+)',
-            r'(\d+)\s*(?:calories|cal|kcal|energy)'
+            r'(?:calories|cal|kcal|energy|θερμίδες|θερμιδες)[:\-\s]*(\d+)',
+            r'(\d+)\s*(?:calories|cal|kcal|energy|θερμίδες|θερμιδες)'
         ]
         calories = None
         for pat in cal_patterns:
@@ -323,8 +358,8 @@ class NutritionAnalyzer:
                 break
 
         prot_patterns = [
-            r'(?:protein|prot)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
-            r'(\d+(?:\.\d+)?)\s*g?\s*(?:protein|prot)\b'
+            r'(?:protein|prot|πρωτεΐνη|πρωτεΐνης|πρωτεινη|πρωτεινης)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
+            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:protein|prot|πρωτεΐνη|πρωτεΐνης|πρωτεινη|πρωτεινης)\b'
         ]
         protein = None
         for pat in prot_patterns:
@@ -334,8 +369,8 @@ class NutritionAnalyzer:
                 break
 
         carb_patterns = [
-            r'(?:carbs|carb|carbohydrates|carbohydrate)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
-            r'(\d+(?:\.\d+)?)\s*g?\s*(?:carbs|carb|carbohydrates|carbohydrate)\b'
+            r'(?:carbs|carb|carbohydrates|carbohydrate|υδατάνθρακες|υδατανθρακες)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
+            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:carbs|carb|carbohydrates|carbohydrate|υδατάνθρακες|υδατανθρακες)\b'
         ]
         carbs = None
         for pat in carb_patterns:
@@ -345,8 +380,8 @@ class NutritionAnalyzer:
                 break
 
         fat_patterns = [
-            r'(?:fats|fat|lipid|lipids)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
-            r'(\d+(?:\.\d+)?)\s*g?\s*(?:fats|fat|lipid|lipids)\b'
+            r'(?:fats|fat|lipid|lipids|λίπη|λιπαρά|λιπαρα|λιπος)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
+            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:fats|fat|lipid|lipids|λίπη|λιπαρά|λιπαρα|λιπος)\b'
         ]
         fats = None
         for pat in fat_patterns:
@@ -355,17 +390,17 @@ class NutritionAnalyzer:
                 fats = float(m.group(1))
                 break
 
-        # If we found explicit calories, protein, and carbs, use them directly
-        if calories is not None and protein is not None and carbs is not None:
+        # If we found any explicit macros, use them directly
+        if calories is not None or protein is not None or carbs is not None or fats is not None:
             logger.info(
-                "Extracted explicit macros: P:%.1f C:%.1f F:%.1f Cal:%d",
-                protein, carbs, fats or 0.0, calories
+                "Extracted explicit macros: P:%s C:%s F:%s Cal:%s",
+                protein, carbs, fats, calories
             )
             return MacroNutrients(
-                protein=protein,
-                carbs=carbs,
+                protein=protein or 0.0,
+                carbs=carbs or 0.0,
                 fats=fats or 0.0,
-                calories=calories
+                calories=calories or 0
             ), ingredients_list
 
         # 2. Otherwise fall back to ingredient-parser-nlp and SQLite lookups
@@ -383,6 +418,10 @@ class NutritionAnalyzer:
 
             name_str = result.name[0].text.strip()
             amount_obj = result.amount[0] if result.amount else None
+
+            # Skip items without a parsed quantity if there's no ingredients list header
+            if not has_header and not amount_obj:
+                continue
 
             grams = self._get_ingredient_grams(amount_obj, name_str)
             scale = grams / 100.0
@@ -421,7 +460,11 @@ class NutritionAnalyzer:
 
     def _analyze_basic(self, description: str) -> tuple[MacroNutrients, list[dict[str, str]]]:
         """Fallback basic token parsing when ingredient-parser-nlp is not installed."""
-        phrases = self._tokenize_ingredients(description)
+        ingredients_block, has_header = self._extract_ingredients_text(description)
+        if not has_header:
+            return MacroNutrients(), []
+
+        phrases = self._tokenize_ingredients(ingredients_block)
         ingredients_list = [{"name": p, "quantity": ""} for p in phrases]
         total = MacroNutrients()
         matches = 0
@@ -449,24 +492,41 @@ class NutritionAnalyzer:
         return total, ingredients_list
 
     @staticmethod
-    def _extract_ingredients_text(description: str) -> str:
-        """Extract the block of text containing ingredients from the description."""
+    def _extract_ingredients_text(description: str) -> tuple[str, bool]:
+        """
+        Extract the block of text containing ingredients from the description.
+        Returns a tuple of (extracted_text, has_header).
+        """
         desc_lower = description.lower()
-        ing_pos = desc_lower.find("ingredients")
-        if ing_pos == -1:
-            return description
+        headers = ["ingredients", "υλικά", "υλικα", "συστατικά", "συστατικα"]
+        
+        ing_pos = -1
+        matched_header = ""
+        for header in headers:
+            pos = desc_lower.find(header)
+            if pos != -1:
+                if ing_pos == -1 or pos < ing_pos:
+                    ing_pos = pos
+                    matched_header = header
 
-        start_pos = ing_pos + len("ingredients")
-        while start_pos < len(description) and description[start_pos] in [':', ' ', '\t']:
+        if ing_pos == -1:
+            return description, False
+
+        start_pos = ing_pos + len(matched_header)
+        while start_pos < len(description) and description[start_pos] in [':', ' ', '\t', '-', '•', '*']:
             start_pos += 1
 
         end_pos = len(description)
-        for term in ["instructions", "directions", "steps", "nutrition", "prep time"]:
+        terminators = [
+            "instructions", "directions", "steps", "nutrition", "prep time",
+            "εκτέλεση", "εκτελεση", "οδηγίες", "οδηγιες", "τρόπος παρασκευής", "τροπος παρασκευης"
+        ]
+        for term in terminators:
             term_pos = desc_lower.find(term, start_pos)
             if term_pos != -1 and term_pos < end_pos:
                 end_pos = term_pos
 
-        return description[start_pos:end_pos].strip()
+        return description[start_pos:end_pos].strip(), True
 
     @staticmethod
     def _split_ingredients(text: str) -> list[str]:

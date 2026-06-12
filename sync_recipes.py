@@ -9,6 +9,11 @@ Ensures we do not hit the network or request details for videos already in the d
 import argparse
 import sys
 import logging
+
+# Reconfigure standard output streams to use UTF-8 on Windows
+sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
+sys.stderr.reconfigure(encoding='utf-8', errors='backslashreplace')
+
 from helpers.engine import RecipeEngine
 from config import TIKTOK_INGEST_DELAY_SEC
 
@@ -54,9 +59,10 @@ def main():
         
         logger.info("==========================================")
         logger.info("Sync completed successfully!")
-        logger.info("Added   : %d new recipe(s)", stats.get("added", 0))
-        logger.info("Skipped : %d already existing recipe(s)", stats.get("skipped", 0))
-        logger.info("Errors  : %d occurred", stats.get("errors", 0))
+        logger.info("Added to DB : %d new recipe(s)", stats.get("added", 0))
+        logger.info("Manual Check: %d recipe(s) with no data", stats.get("not_added", 0))
+        logger.info("Skipped     : %d already processed recipe(s)", stats.get("skipped", 0))
+        logger.info("Errors      : %d occurred", stats.get("errors", 0))
         logger.info("==========================================")
     except KeyboardInterrupt:
         logger.warning("\nSync interrupted by user. Exiting safely.")

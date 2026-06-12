@@ -75,6 +75,8 @@ class Recipe:
     added_on: str = ""
 
     def __post_init__(self):
+        if self.name:
+            self.name = self.name[:200]
         if not self.added_on:
             self.added_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 

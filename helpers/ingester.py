@@ -90,7 +90,7 @@ class TikTokIngester:
         visits the individual video page to fetch the full description, parses it, and adds it.
         Waits `delay_seconds` between newly processed videos to avoid rate limits.
         """
-        stats = {"added": 0, "skipped": 0, "errors": 0}
+        stats = {"added": 0, "skipped": 0, "errors": 0, "not_added": 0}
 
         video_links = self._extract_playlist_links(playlist_url)
         if not video_links:
@@ -107,9 +107,26 @@ class TikTokIngester:
             video_url = item["url"]
 
             # O(1) skip check before hitting the network for this video
-            if self._pipeline._db.exists(video_id):
+            in_main = self._pipeline._db.exists(video_id)
+            in_not_added = self._pipeline._not_added_db.exists(video_id)
+            should_skip = False
+            
+            if in_main:
+                should_skip = True
+            elif in_not_added:
+                existing = self._pipeline._not_added_db.get(video_id)
+                desc = ""
+                if existing:
+                    if isinstance(existing, dict):
+                        desc = existing.get("description", "")
+                    else:
+                        desc = getattr(existing, "description", "")
+                if "[Transcript]" in desc or "Transcript fetch failed" in desc:
+                    should_skip = True
+            
+            if should_skip:
                 logger.info(
-                    "[%d/%d] SKIP: Video ID %s already exists in database",
+                    "[%d/%d] SKIP: Video ID %s already processed",
                     idx + 1,
                     len(video_links),
                     video_id,
@@ -125,7 +142,7 @@ class TikTokIngester:
             )
             try:
                 added = self.ingest_single(video_url)
-                if added:
+                if added is True:
                     stats["added"] += 1
                     logger.info(
                         "Added video %s. Sleeping for %.1f seconds...",
@@ -133,8 +150,11 @@ class TikTokIngester:
                         delay_seconds,
                     )
                     time.sleep(delay_seconds)
+                elif added is None:
+                    logger.warning("Recipe %s had no data; routed to manual check list", video_id)
+                    stats["not_added"] += 1
                 else:
-                    logger.warning("Skipped / failed to add video %s", video_id)
+                    logger.info("Skipped video %s (already processed)", video_id)
                     stats["skipped"] += 1
             except Exception as exc:
                 logger.error("Error ingesting video %s: %s", video_id, exc)

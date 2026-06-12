@@ -24,6 +24,12 @@ OPENNUTRITION_ZIP_URL = (
 # TikTok session cookies path (Netscape/JSON format)
 TIKTOK_COOKIES_PATH = os.path.join(BASE_DIR, "tiktok_cookies.json")
 
+# Database path for recipes that failed to parse (manual review list)
+NOT_ADDED_FILE_PATH = os.path.join(BASE_DIR, "database", "not_added_recipes.json")
+
+# Supadata API settings
+SUPADATA_API_KEY = "sd_506d984360594aae56cc898b068dbfb5"
+
 # ──────────────────────────────────────────────
 # HTTP / Download settings
 # ──────────────────────────────────────────────
