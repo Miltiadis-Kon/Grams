@@ -235,13 +235,6 @@ class TikTokIngester:
 
         Returns True if the recipe was newly added, False if skipped.
         """
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
-            raise RuntimeError(
-                "Playwright is not installed. Run: pip install playwright && playwright install chromium"
-            )
-
         video = self._extract_single_video(video_url)
         if not video:
             logger.warning("Failed to extract metadata from: %s", video_url)
@@ -400,105 +393,74 @@ class TikTokIngester:
         return videos
 
     def _extract_single_video(self, video_url: str) -> Optional[dict]:
-        """Extract metadata from a single TikTok video page."""
-        from playwright.sync_api import sync_playwright
+        """Extract metadata from a single TikTok video page using pyktok."""
+        import pyktok as pyk
+        import requests
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=PLAYWRIGHT_HEADLESS)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
-            )
+        video_id = self._extract_video_id(video_url)
+        if not video_id:
+            logger.warning("Could not extract video ID from URL: %s", video_url)
+            return None
 
-            cookies = self._load_cookies()
-            if cookies:
-                context.add_cookies(cookies)
-
-            page = context.new_page()
-
-            try:
-                page.goto(video_url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(3000)
-
-                video_id = self._extract_video_id(video_url)
-                if not video_id:
-                    return None
-
-                # Try to get description from embedded JSON state
-                try:
-                    sigi = page.query_selector('script#SIGI_STATE, script#__UNIVERSAL_DATA_FOR_REHYDRATION__')
-                    if sigi:
-                        data = json.loads(sigi.inner_text())
-
-                        # Recursive helper to find video structure matching video_id
-                        def find_video_desc_in_json(obj, target_id):
-                            if isinstance(obj, dict):
-                                if obj.get("id") == target_id and "desc" in obj:
-                                    return obj.get("desc")
-                                if "itemStruct" in obj and isinstance(obj["itemStruct"], dict):
-                                    struct = obj["itemStruct"]
-                                    if struct.get("id") == target_id and "desc" in struct:
-                                        return struct.get("desc")
-                                    if "desc" in struct:
-                                        return struct.get("desc")
-                                if "desc" in obj and isinstance(obj["desc"], str) and obj.get("id") == target_id:
-                                    return obj["desc"]
-                                for val in obj.values():
-                                    res = find_video_desc_in_json(val, target_id)
-                                    if res:
-                                        return res
-                            elif isinstance(obj, list):
-                                for item in obj:
-                                    res = find_video_desc_in_json(item, target_id)
-                                    if res:
-                                        return res
-                            return None
-
-                        desc = find_video_desc_in_json(data, video_id)
-                        if desc:
-                            return {
-                                "id": video_id,
-                                "title": desc.split("\n")[0].strip()[:80] or f"TikTok Video {video_id}",
-                                "url": video_url,
-                                "description": desc.strip(),
-                            }
-                except Exception as e:
-                    logger.debug("Failed parsing embedded JSON state: %s", e)
-
-                # Fallback: extract from visible DOM (more specific description selectors first)
-                title = page.title() or f"TikTok Video {video_id}"
-                desc_el = page.query_selector(
-                    '[data-e2e="browse-video-desc"], [data-e2e="video-desc"], [class*="Description"], [class*="video-desc"]'
+        # Load session cookies and inject them into pyktok's global cookies
+        cookies = self._load_cookies()
+        jar = requests.cookies.RequestsCookieJar()
+        if cookies:
+            for c in cookies:
+                jar.set(
+                    c.get("name", ""),
+                    c.get("value", ""),
+                    domain=c.get("domain", ".tiktok.com"),
+                    path=c.get("path", "/"),
                 )
-                if desc_el:
-                    description = desc_el.inner_text().strip()
-                else:
-                    description = ""
+        pyk.cookies = jar
 
-                if not description:
-                    # Try class*="desc" but ignore h1 to avoid transcript screen-reader text
-                    desc_el = page.query_selector('[class*="desc"]')
-                    if desc_el:
-                        description = desc_el.inner_text().strip()
+        logger.info("Fetching TikTok page via pyktok: %s", video_url)
+        try:
+            # 1. Try __UNIVERSAL_DATA_FOR_REHYDRATION__ first
+            data = pyk.alt_get_tiktok_json(video_url)
+            if data and "__DEFAULT_SCOPE__" in data:
+                scope = data.get("__DEFAULT_SCOPE__", {})
+                video_detail = scope.get("webapp.video-detail", {})
+                item_info = video_detail.get("itemInfo", {})
+                item_struct = item_info.get("itemStruct", {})
+                if item_struct:
+                    desc = item_struct.get("desc", "").strip()
+                    title = desc.split("\n")[0].strip()[:80] if desc else ""
+                    if not title:
+                        title = f"TikTok Video {video_id}"
+                    return {
+                        "id": video_id,
+                        "title": title,
+                        "url": video_url,
+                        "description": desc,
+                    }
 
-                if not description:
-                    description = title
+            # 2. Try SIGI_STATE as fallback
+            data = pyk.get_tiktok_json(video_url)
+            if data and "ItemModule" in data:
+                item_module = data.get("ItemModule", {})
+                if item_module:
+                    # Key is usually the video ID string
+                    key = list(item_module.keys())[0]
+                    item_struct = item_module[key]
+                    desc = item_struct.get("desc", "").strip()
+                    title = desc.split("\n")[0].strip()[:80] if desc else ""
+                    if not title:
+                        title = f"TikTok Video {video_id}"
+                    return {
+                        "id": video_id,
+                        "title": title,
+                        "url": video_url,
+                        "description": desc,
+                    }
+            
+            logger.warning("Could not locate metadata in pyktok JSON payload for video ID: %s", video_id)
+            return None
+        except Exception as exc:
+            logger.error("pyktok single video extraction failed for %s: %s", video_url, exc)
+            return None
 
-                return {
-                    "id": video_id,
-                    "title": title.strip(),
-                    "url": video_url,
-                    "description": description.strip(),
-                }
-
-            except Exception as exc:
-                logger.error("Single video extraction failed for %s: %s", video_url, exc)
-                return None
-            finally:
-                browser.close()
 
     @staticmethod
     def _extract_video_id(url: str) -> Optional[str]:

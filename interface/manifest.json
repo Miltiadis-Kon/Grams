@@ -1,0 +1,24 @@
+{
+  "name": "Grams - Macro Finder & Planner",
+  "short_name": "Grams",
+  "description": "Find and calculate macros for your favorite TikTok recipes.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6FAF9",
+  "theme_color": "#129575",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "baker.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "baker.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

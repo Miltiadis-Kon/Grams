@@ -28,7 +28,7 @@ TIKTOK_COOKIES_PATH = os.path.join(BASE_DIR, "tiktok_cookies.json")
 NOT_ADDED_FILE_PATH = os.path.join(BASE_DIR, "database", "not_added_recipes.json")
 
 # Supadata API settings
-SUPADATA_API_KEY = "sd_506d984360594aae56cc898b068dbfb5"
+SUPADATA_API_KEY = "sd_73e44d8358883c13baef75ed586f294a"
 
 # Ollama settings (local LLM used as fallback for recipe parsing via transcript)
 OLLAMA_BASE_URL = "http://localhost:11434"

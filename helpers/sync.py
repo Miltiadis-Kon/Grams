@@ -108,22 +108,18 @@ class SyncPipeline:
     @staticmethod
     def _parse_recipe_with_ollama(text: str) -> dict:
         """
-        Call the local Ollama API to parse a text block (description or transcript)
+        Call the Ollama API (or Groq API if GROQ_API_KEY is in environment) to parse a text block (description or transcript)
         into structured recipe data, including ingredients and estimated macros.
-
-        Uses the /api/generate endpoint (stream=false) so the entire response
-        arrives in a single JSON object.
 
         Returns a dict with keys: 'is_recipe' (bool), 'title' (str), 'ingredients' (list of dicts),
         and 'macros' (dict with protein, carbs, fats, calories).
         """
+        import os
         import json as _json
         import urllib.request
         import urllib.error
 
-        import config
-        base_url = getattr(config, "OLLAMA_BASE_URL", "http://localhost:11434")
-        model = getattr(config, "OLLAMA_MODEL", "llama3.1")
+        groq_api_key = os.environ.get("GROQ_API_KEY")
 
         prompt = (
             "You are a recipe extraction assistant.\n"
@@ -164,26 +160,72 @@ class SyncPipeline:
             f"Text:\n{text[:6000]}"
         )
 
-        payload = _json.dumps({
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {"temperature": 0.1},
-        }).encode("utf-8")
+        raw_text = ""
+        if groq_api_key:
+            logger.info("GROQ_API_KEY detected. Directing parsing request to Groq API.")
+            payload = _json.dumps({
+                "model": "llama3-8b-8192",
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.1,
+                "response_format": {"type": "json_object"}
+            }).encode("utf-8")
 
-        endpoint = f"{base_url.rstrip('/')}/api/generate"
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {groq_api_key}",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                },
+                method="POST"
+            )
 
-        req = urllib.request.Request(
-            endpoint,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    response_data = _json.loads(resp.read().decode("utf-8"))
+                choices = response_data.get("choices", [])
+                if not choices:
+                    raise ValueError("Groq returned an empty choice list")
+                raw_text = choices[0].get("message", {}).get("content", "").strip()
+            except urllib.error.HTTPError as e:
+                try:
+                    err_body = e.read().decode("utf-8")
+                except Exception:
+                    err_body = "(could not read body)"
+                logger.warning("Groq API parsing failed with HTTP Error %d (%s): %s. Falling back to local Ollama if available.", e.code, e.reason, err_body)
+                groq_api_key = None
+            except Exception as e:
+                logger.warning("Groq API parsing failed: %s. Falling back to local Ollama if available.", e)
+                groq_api_key = None
 
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            response_data = _json.loads(resp.read().decode("utf-8"))
+        if not groq_api_key:
+            import config
+            base_url = getattr(config, "OLLAMA_BASE_URL", "http://localhost:11434")
+            model = getattr(config, "OLLAMA_MODEL", "llama3.1")
 
-        raw_text = response_data.get("response", "").strip()
+            payload = _json.dumps({
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.1},
+            }).encode("utf-8")
+
+            endpoint = f"{base_url.rstrip('/')}/api/generate"
+
+            req = urllib.request.Request(
+                endpoint,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                response_data = _json.loads(resp.read().decode("utf-8"))
+
+            raw_text = response_data.get("response", "").strip()
 
         # Find the JSON object starting with { and ending with }
         match = re.search(r"(\{.*\})", raw_text, re.DOTALL)

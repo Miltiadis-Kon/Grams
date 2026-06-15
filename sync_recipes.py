@@ -14,7 +14,6 @@ sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
 sys.stderr.reconfigure(encoding='utf-8', errors='backslashreplace')
 
 from helpers.engine import RecipeEngine
-from config import TIKTOK_INGEST_DELAY_SEC
 
 # Configure logging
 logging.basicConfig(
@@ -27,12 +26,9 @@ logging.basicConfig(
 logger = logging.getLogger("sync_recipes")
 
 def main():
-    if len(sys.argv) < 2:
-        logger.error("Usage: python sync_recipes.py <TikTok_Video_or_Playlist_URL>")
-        sys.exit(1)
 
-    given_url = sys.argv[1].strip()
-    delay = TIKTOK_INGEST_DELAY_SEC
+    given_url = "https://vm.tiktok.com/ZN9jNUVd4qWnw-0AhXA/"
+    delay = 0
 
     # Resolve redirect to get the actual URL
     resolved_url = given_url
