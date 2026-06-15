@@ -30,6 +30,10 @@ NOT_ADDED_FILE_PATH = os.path.join(BASE_DIR, "database", "not_added_recipes.json
 # Supadata API settings
 SUPADATA_API_KEY = "sd_506d984360594aae56cc898b068dbfb5"
 
+# Ollama settings (local LLM used as fallback for recipe parsing via transcript)
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_MODEL = "llama3.1"
+
 # ──────────────────────────────────────────────
 # HTTP / Download settings
 # ──────────────────────────────────────────────

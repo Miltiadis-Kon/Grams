@@ -432,24 +432,60 @@ class TikTokIngester:
                     sigi = page.query_selector('script#SIGI_STATE, script#__UNIVERSAL_DATA_FOR_REHYDRATION__')
                     if sigi:
                         data = json.loads(sigi.inner_text())
-                        # Navigate the typical TikTok state structure
-                        item_module = data.get("ItemModule", {})
-                        video_data = item_module.get(video_id, {})
-                        return {
-                            "id": video_id,
-                            "title": video_data.get("desc", f"TikTok Video {video_id}"),
-                            "url": video_url,
-                            "description": video_data.get("desc", ""),
-                        }
-                except Exception:
-                    pass
 
-                # Fallback: extract from visible DOM
+                        # Recursive helper to find video structure matching video_id
+                        def find_video_desc_in_json(obj, target_id):
+                            if isinstance(obj, dict):
+                                if obj.get("id") == target_id and "desc" in obj:
+                                    return obj.get("desc")
+                                if "itemStruct" in obj and isinstance(obj["itemStruct"], dict):
+                                    struct = obj["itemStruct"]
+                                    if struct.get("id") == target_id and "desc" in struct:
+                                        return struct.get("desc")
+                                    if "desc" in struct:
+                                        return struct.get("desc")
+                                if "desc" in obj and isinstance(obj["desc"], str) and obj.get("id") == target_id:
+                                    return obj["desc"]
+                                for val in obj.values():
+                                    res = find_video_desc_in_json(val, target_id)
+                                    if res:
+                                        return res
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    res = find_video_desc_in_json(item, target_id)
+                                    if res:
+                                        return res
+                            return None
+
+                        desc = find_video_desc_in_json(data, video_id)
+                        if desc:
+                            return {
+                                "id": video_id,
+                                "title": desc.split("\n")[0].strip()[:80] or f"TikTok Video {video_id}",
+                                "url": video_url,
+                                "description": desc.strip(),
+                            }
+                except Exception as e:
+                    logger.debug("Failed parsing embedded JSON state: %s", e)
+
+                # Fallback: extract from visible DOM (more specific description selectors first)
                 title = page.title() or f"TikTok Video {video_id}"
                 desc_el = page.query_selector(
-                    '[class*="desc"], [data-e2e="browse-video-desc"], h1'
+                    '[data-e2e="browse-video-desc"], [data-e2e="video-desc"], [class*="Description"], [class*="video-desc"]'
                 )
-                description = desc_el.inner_text() if desc_el else title
+                if desc_el:
+                    description = desc_el.inner_text().strip()
+                else:
+                    description = ""
+
+                if not description:
+                    # Try class*="desc" but ignore h1 to avoid transcript screen-reader text
+                    desc_el = page.query_selector('[class*="desc"]')
+                    if desc_el:
+                        description = desc_el.inner_text().strip()
+
+                if not description:
+                    description = title
 
                 return {
                     "id": video_id,

@@ -6,7 +6,6 @@ Performs continuous, rate-limited ingestion of recipe videos from a TikTok playl
 Ensures we do not hit the network or request details for videos already in the database.
 """
 
-import argparse
 import sys
 import logging
 
@@ -28,21 +27,31 @@ logging.basicConfig(
 logger = logging.getLogger("sync_recipes")
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Grams CLI Tool: Sync a TikTok recipe playlist slowly & incrementally."
-    )
-    parser.add_argument(
-        "playlist_url", 
-        help="The full TikTok playlist URL to scrape/sync."
-    )
-    parser.add_argument(
-        "--delay", 
-        type=float, 
-        default=TIKTOK_INGEST_DELAY_SEC,
-        help=f"Delay in seconds between newly ingested video pages (default: {TIKTOK_INGEST_DELAY_SEC}s)"
-    )
+    if len(sys.argv) < 2:
+        logger.error("Usage: python sync_recipes.py <TikTok_Video_or_Playlist_URL>")
+        sys.exit(1)
 
-    args = parser.parse_args()
+    given_url = sys.argv[1].strip()
+    delay = TIKTOK_INGEST_DELAY_SEC
+
+    # Resolve redirect to get the actual URL
+    resolved_url = given_url
+    if "tiktok.com" in given_url:
+        try:
+            import requests
+            # Standard browser-like user agent to avoid blocking
+            headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
+            }
+            r = requests.get(given_url, headers=headers, allow_redirects=True, timeout=10)
+            resolved_url = r.url
+            logger.info("Resolved URL: %s", resolved_url)
+        except Exception as e:
+            logger.warning("Failed to resolve redirect for %s: %s. Using original URL.", given_url, e)
 
     logger.info("Starting Grams Sync Engine...")
     try:
@@ -51,23 +60,35 @@ def main():
         logger.error("Failed to initialize RecipeEngine: %s", e)
         sys.exit(1)
 
-    logger.info("Playlist URL: %s", args.playlist_url)
-    logger.info("Configured Ingestion Delay: %.1fs", args.delay)
+    logger.info("Configured Ingestion Delay: %.1fs", delay)
     
     try:
-        stats = engine.ingest_tiktok_playlist_detailed(args.playlist_url, delay_seconds=args.delay)
-        
-        logger.info("==========================================")
-        logger.info("Sync completed successfully!")
-        logger.info("Added to DB : %d new recipe(s)", stats.get("added", 0))
-        logger.info("Manual Check: %d recipe(s) with no data", stats.get("not_added", 0))
-        logger.info("Skipped     : %d already processed recipe(s)", stats.get("skipped", 0))
-        logger.info("Errors      : %d occurred", stats.get("errors", 0))
-        logger.info("==========================================")
+        if "/video/" in resolved_url:
+            logger.info("Processing single video: %s", resolved_url)
+            res = engine.ingest_tiktok_video(resolved_url)
+            logger.info("==========================================")
+            if res is True:
+                logger.info("Sync completed successfully: Recipe was added to database!")
+            elif res is False:
+                logger.info("Sync completed successfully: Recipe already exists (skipped)!")
+            else:
+                logger.info("Sync complete: Recipe had no data or failed parsing, saved/updated in manual check list.")
+            logger.info("==========================================")
+        else:
+            logger.info("Processing playlist/collection: %s", resolved_url)
+            stats = engine.ingest_tiktok_playlist_detailed(resolved_url, delay_seconds=delay)
+            
+            logger.info("==========================================")
+            logger.info("Sync completed successfully!")
+            logger.info("Added to DB : %d new recipe(s)", stats.get("added", 0))
+            logger.info("Manual Check: %d recipe(s) with no data", stats.get("not_added", 0))
+            logger.info("Skipped     : %d already processed recipe(s)", stats.get("skipped", 0))
+            logger.info("Errors      : %d occurred", stats.get("errors", 0))
+            logger.info("==========================================")
     except KeyboardInterrupt:
         logger.warning("\nSync interrupted by user. Exiting safely.")
     except Exception as e:
-        logger.error("Error during playlist sync: %s", e)
+        logger.error("Error during sync: %s", e)
     finally:
         engine.close()
 

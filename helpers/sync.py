@@ -24,10 +24,12 @@ class SyncPipeline:
     """
     Orchestrates the ingestion flow for individual recipe payloads:
     1. Delta check (skip if exists in main or not-added database)
-    2. Nutritional analysis
-    3. Supadata API fallback if no macros parsed
-    4. Auto-tagging
-    5. Database insertion (route to main if filled, otherwise to not-added)
+    2. Try to parse ingredients from description/title
+    3. If ingredients found → save the recipe
+    4. If not → fetch transcript via Supadata API
+    5. Use Gemini API to parse the transcript and extract recipe data
+    6. Build Recipe object and auto-tag
+    7. Database insertion (route to main if filled, otherwise to not-added)
     """
 
     def __init__(
@@ -79,7 +81,10 @@ class SyncPipeline:
             if current:
                 chunks.append(current.strip())
 
-            translator = Translator(to_lang="en")
+            if has_greek:
+                translator = Translator(from_lang="el", to_lang="en")
+            else:
+                translator = Translator(to_lang="en")
             translated_parts = []
             for chunk in chunks:
                 try:
@@ -100,6 +105,93 @@ class SyncPipeline:
             logger.warning("Description translation failed: %s", exc)
             return text
 
+    @staticmethod
+    def _parse_recipe_with_ollama(text: str) -> dict:
+        """
+        Call the local Ollama API to parse a text block (description or transcript)
+        into structured recipe data, including ingredients and estimated macros.
+
+        Uses the /api/generate endpoint (stream=false) so the entire response
+        arrives in a single JSON object.
+
+        Returns a dict with keys: 'is_recipe' (bool), 'title' (str), 'ingredients' (list of dicts),
+        and 'macros' (dict with protein, carbs, fats, calories).
+        """
+        import json as _json
+        import urllib.request
+        import urllib.error
+
+        import config
+        base_url = getattr(config, "OLLAMA_BASE_URL", "http://localhost:11434")
+        model = getattr(config, "OLLAMA_MODEL", "llama3.1")
+
+        prompt = (
+            "You are a recipe extraction assistant.\n"
+            "Analyse the following text and determine if it contains a food recipe.\n\n"
+            "If it IS a recipe, respond with valid JSON only (no markdown, no explanation) "
+            "in this exact format:\n"
+            "{\n"
+            '  "is_recipe": true,\n'
+            '  "title": "Recipe Title",\n'
+            '  "ingredients": [\n'
+            '    {"name": "ingredient 1 name", "quantity": "quantity 1"},\n'
+            '    {"name": "ingredient 2 name", "quantity": "quantity 2"}\n'
+            '  ],\n'
+            '  "macros": {\n'
+            '    "protein": 0.0,\n'
+            '    "carbs": 0.0,\n'
+            '    "fats": 0.0,\n'
+            '    "calories": 0\n'
+            '  }\n'
+            "}\n\n"
+            "If it is NOT a recipe (e.g. fitness tips, general talking, product review, travel), respond with:\n"
+            "{\n"
+            '  "is_recipe": false,\n'
+            '  "title": "",\n'
+            '  "ingredients": [],\n'
+            '  "macros": {\n'
+            '    "protein": 0.0,\n'
+            '    "carbs": 0.0,\n'
+            '    "fats": 0.0,\n'
+            '    "calories": 0\n'
+            '  }\n'
+            "}\n\n"
+            "IMPORTANT instructions for macros calculation:\n"
+            "- If the macro-nutrients (protein, carbs, fats, calories) are explicitly mentioned in the text, extract them.\n"
+            "- If they are not mentioned, set all macro values to 0.0 / 0. DO NOT estimate them under any circumstances.\n"
+            "- The values for protein, carbs, fats must be numbers in grams. calories must be an integer representing kcal.\n"
+            "- Output ONLY the raw JSON block. Do not include markdown code blocks, do not include any preamble, introduction, or explanation.\n\n"
+            f"Text:\n{text[:6000]}"
+        )
+
+        payload = _json.dumps({
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.1},
+        }).encode("utf-8")
+
+        endpoint = f"{base_url.rstrip('/')}/api/generate"
+
+        req = urllib.request.Request(
+            endpoint,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            response_data = _json.loads(resp.read().decode("utf-8"))
+
+        raw_text = response_data.get("response", "").strip()
+
+        # Find the JSON object starting with { and ending with }
+        match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
+        if match:
+            raw_text = match.group(1)
+
+        return _json.loads(raw_text)
+
     # ── Processing ────────────────────────────────────────────────────────────
 
     def process(
@@ -112,6 +204,14 @@ class SyncPipeline:
     ) -> bool | None:
         """
         Process a single recipe payload through the full pipeline.
+
+        New flow:
+          1. Delta check — skip if already processed.
+          2. Try to parse ingredients and macros from the description/title using Ollama.
+          3. If recipe/ingredients found → save the recipe.
+          4. If not → fetch transcript via Supadata.
+          5. Parse transcript with Ollama.
+             If Ollama confirms it's a recipe → save; otherwise → not-added.
 
         Returns:
           True: Recipe was newly added to recipes_db.json
@@ -131,39 +231,50 @@ class SyncPipeline:
                     desc = existing.get("description", "")
                 else:
                     desc = getattr(existing, "description", "")
-            if "[Transcript]" in desc or "Transcript fetch failed" in desc:
-                logger.info("SKIP: Recipe '%s' (%s) already processed and Supadata fallback attempted", recipe_id, name)
+            if "[Transcript]" in desc or "Transcript fetch failed" in desc or "[Ollama]" in desc:
+                logger.info("SKIP: Recipe '%s' (%s) already processed and fallback attempted", recipe_id, name)
                 return False
             else:
-                logger.info("RE-PROCESSING: Recipe '%s' (%s) from manual check list to attempt Supadata fallback", recipe_id, name)
+                logger.info("RE-PROCESSING: Recipe '%s' (%s) from manual check list", recipe_id, name)
 
-        # ── Step 2: Nutritional analysis ─────────────
-        # First, translate the description if it is non-English
+        # ── Step 2: Try to parse ingredients from description using Ollama ───
         description = self._translate_description_if_needed(description)
 
         macros = MacroNutrients()
         ingredients = []
+        has_ingredients = False
+
+        logger.info("Parsing description with Ollama for '%s'...", recipe_id)
         try:
-            macros, ingredients = self._nutrition.analyze(description)
+            llm_result = self._parse_recipe_with_ollama(description)
+            if llm_result.get("is_recipe"):
+                llm_title = llm_result.get("title", "").strip()
+                llm_ingredients = llm_result.get("ingredients", [])
+                if llm_title and llm_title != name and "TikTok Video" in name:
+                    name = llm_title
+                
+                if llm_ingredients:
+                    ingredients = llm_ingredients
+                    has_ingredients = True
+                    macros = self._nutrition.analyze_ingredients(ingredients, description_for_servings=description)
+                    logger.info("Ollama identified recipe in description for '%s' with %d ingredients. Calculated macros: P:%.1f C:%.1f F:%.1f Cal:%d",
+                                recipe_id, len(ingredients), macros.protein, macros.carbs, macros.fats, macros.calories)
+                    description = f"{description}\n\n[Ollama Parsed Ingredients & Macros]"
+            else:
+                logger.info("Ollama determined description for '%s' is NOT a recipe", recipe_id)
         except Exception as exc:
-            logger.error(
-                "Nutrition analysis failed for '%s': %s",
-                recipe_id, exc,
-            )
+            logger.error("Ollama description parsing failed for '%s': %s", recipe_id, exc)
 
-        # Check if we retrieved no data
-        is_empty = (
-            macros.protein == 0.0 and
-            macros.carbs == 0.0 and
-            macros.fats == 0.0 and
-            macros.calories == 0
-        )
-
-        if is_empty:
-            logger.info("No nutritional data retrieved for '%s'. Attempting Supadata transcript fallback...", recipe_id)
+        # ── Step 3: If ingredients found → save ──────────────────────────────
+        if has_ingredients:
+            logger.info("Ingredients found in description for '%s'. Proceeding to save.", recipe_id)
+        else:
+            # ── Step 4: Fetch transcript from Supadata ───────────────────────
+            logger.info("No ingredients in description for '%s'. Fetching Supadata transcript...", recipe_id)
+            transcript_text = None
             try:
-                import config
-                supadata_key = getattr(config, "SUPADATA_API_KEY", None)
+                import config as _config
+                supadata_key = getattr(_config, "SUPADATA_API_KEY", None)
                 if not supadata_key:
                     raise ValueError("SUPADATA_API_KEY is not defined in config.py")
                 from supadata import Supadata
@@ -172,22 +283,13 @@ class SyncPipeline:
                 transcript = client.transcript(url=url, text=True, mode="auto")
                 if hasattr(transcript, 'content') and transcript.content:
                     transcript_text = transcript.content.strip()
-                    logger.info("Successfully fetched transcript via Supadata: %s...", transcript_text[:100])
-
-                    # Always accumulate the full text into description so it is stored
-                    if description:
-                        description = f"{description}\n\n[Transcript]\n{transcript_text}"
-                    else:
-                        description = transcript_text
-
-                    # Detect if description contains non-English (e.g. Greek) and translate
-                    description = self._translate_description_if_needed(description)
-
-                    # Re-analyze with the full, possibly translated description
-                    macros, ingredients = self._nutrition.analyze(description)
+                    logger.info("Supadata transcript fetched (%d chars): %s...", len(transcript_text), transcript_text[:80])
+                    # Translate transcript text first before prepending label
+                    translated_desc = self._translate_description_if_needed(transcript_text)
+                    description = f"[Transcript]\n{translated_desc}"
                 else:
-                    logger.warning("Supadata transcript returned empty content for url: %s", url)
-                    if description:
+                    logger.warning("Supadata returned empty transcript for: %s", url)
+                    if description and "Transcript fetch failed" not in description:
                         description = f"{description}\n\n[Transcript fetch failed: empty content]"
                     else:
                         description = "[Transcript fetch failed: empty content]"
@@ -198,7 +300,34 @@ class SyncPipeline:
                 else:
                     description = f"[Transcript fetch failed: {supadata_exc}]"
 
-        # ── Step 3: Build Recipe object ──────────────
+            # ── Step 5: Parse transcript with Ollama ─────────────────────────
+            if transcript_text:
+                logger.info("Parsing transcript with Ollama for '%s'...", recipe_id)
+                try:
+                    # We should parse the translated description so Ollama has the English context
+                    llm_result = self._parse_recipe_with_ollama(description)
+                    if llm_result.get("is_recipe"):
+                        llm_title = llm_result.get("title", "").strip()
+                        llm_ingredients = llm_result.get("ingredients", [])
+                        if llm_title and llm_title != name and "TikTok Video" in name:
+                            name = llm_title
+                        logger.info(
+                            "Ollama identified recipe from transcript '%s' with %d ingredient(s)",
+                            name, len(llm_ingredients),
+                        )
+                        ingredients = llm_ingredients
+                        # Always compute macros using OpenNutrition
+                        macros = self._nutrition.analyze_ingredients(ingredients, description_for_servings=description)
+                        description = f"{description}\n\n[Ollama Parsed Ingredients & Macros]"
+                    else:
+                        logger.info("Ollama determined transcript for '%s' is NOT a recipe. Routing to not-added.", recipe_id)
+                        description = f"{description}\n\n[Ollama: not a recipe]"
+                except Exception as llm_exc:
+                    logger.error("Ollama parsing failed for '%s': %s", recipe_id, llm_exc)
+                    description = f"{description}\n\n[Ollama parse failed: {llm_exc}]"
+
+
+        # ── Step 6: Build Recipe object ──────────────────────────────────────
         recipe = Recipe(
             name=name,
             url=url,
@@ -208,10 +337,10 @@ class SyncPipeline:
             added_on=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
-        # ── Step 4: Auto-tag ─────────────────────────
+        # ── Step 7: Auto-tag ─────────────────────────────────────────────────
         recipe.tags = self._tagger.tag(recipe, manual_tags)
 
-        # ── Step 5: Persist / Route ──────────────────
+        # ── Step 8: Persist / Route ──────────────────────────────────────────
         is_filled = not (
             recipe.macros.protein == 0.0 and
             recipe.macros.carbs == 0.0 and
@@ -220,14 +349,12 @@ class SyncPipeline:
         )
 
         if is_filled:
-            # If it was in the not-added database, remove it first
             if self._not_added_db.exists(recipe_id):
                 self._not_added_db.delete(recipe_id)
             self._db.insert(recipe_id, recipe)
             logger.info("ADDED: Recipe '%s' (%s) — %d tags", recipe_id, name, len(recipe.tags))
             return True
         else:
-            # Delete first to prevent "already exists" error on insert
             if self._not_added_db.exists(recipe_id):
                 self._not_added_db.delete(recipe_id)
             self._not_added_db.insert(recipe_id, recipe)

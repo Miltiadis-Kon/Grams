@@ -291,6 +291,138 @@ class NutritionAnalyzer:
 
         return None
 
+    def _extract_explicit_macros(self, description: str) -> Optional[MacroNutrients]:
+        """Attempt to extract explicit macro-nutrients from text using regex patterns."""
+        if not description:
+            return None
+
+        desc_clean = description.replace('\xa0', ' ')
+
+        cal_patterns = [
+            r'(?:calories|cal|kcal|energy|θερμίδες|θερμιδες)[:\-\s]*(\d+)',
+            r'(\d+)\s*(?:calories|cal|kcal|energy|θερμίδες|θερμιδες)'
+        ]
+        calories = None
+        for pat in cal_patterns:
+            m = re.search(pat, desc_clean, re.IGNORECASE)
+            if m:
+                calories = int(m.group(1))
+                break
+
+        prot_patterns = [
+            r'(?:protein|prot|πρωτεΐνη|πρωτεΐνης|πρωτεινη|πρωτεινης)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
+            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:protein|prot|πρωτεΐνη|πρωτεΐνης|πρωτεινη|πρωτεινης)\b'
+        ]
+        protein = None
+        for pat in prot_patterns:
+            m = re.search(pat, desc_clean, re.IGNORECASE)
+            if m:
+                protein = float(m.group(1))
+                break
+
+        carb_patterns = [
+            r'(?:carbs|carb|carbohydrates|carbohydrate|υδατάνθρακες|υδατανθρακες)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
+            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:carbs|carb|carbohydrates|carbohydrate|υδατάνθρακες|υδατανθρακες)\b'
+        ]
+        carbs = None
+        for pat in carb_patterns:
+            m = re.search(pat, desc_clean, re.IGNORECASE)
+            if m:
+                carbs = float(m.group(1))
+                break
+
+        fat_patterns = [
+            r'(?:fats|fat|lipid|lipids|λίπη|λιπαρά|λιπαρα|λιπος)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
+            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:fats|fat|lipid|lipids|λίπη|λιπαρά|λιπαρα|λιπος)\b'
+        ]
+        fats = None
+        for pat in fat_patterns:
+            m = re.search(pat, desc_clean, re.IGNORECASE)
+            if m:
+                fats = float(m.group(1))
+                break
+
+        if calories is not None or protein is not None or carbs is not None or fats is not None:
+            return MacroNutrients(
+                protein=protein or 0.0,
+                carbs=carbs or 0.0,
+                fats=fats or 0.0,
+                calories=calories or 0
+            )
+        return None
+
+    def analyze_ingredients(self, ingredients: list[dict[str, str]], description_for_servings: str = "") -> MacroNutrients:
+        """
+        Calculate total macros for a structured list of ingredients using OpenNutrition DB.
+        Each ingredient is a dict with 'name' and 'quantity'.
+        """
+        # First, try to extract explicit macros if they are in the description
+        explicit = self._extract_explicit_macros(description_for_servings)
+        if explicit:
+            logger.info("Using explicit macros extracted from description/transcript.")
+            return explicit
+
+        total = MacroNutrients()
+        matches = 0
+
+        # Import parse_ingredient here to ensure dependency is loaded
+        try:
+            from ingredient_parser import parse_ingredient
+        except ImportError:
+            logger.warning("ingredient-parser-nlp is not installed, unable to parse quantity structure")
+            return total
+
+        for ing in ingredients:
+            name_str = ing.get("name", "").strip()
+            qty_str = ing.get("quantity", "").strip()
+            if not name_str:
+                continue
+
+            # Parse quantity and name combined to retrieve amount object
+            sentence = f"{qty_str} {name_str}".strip()
+            try:
+                result = parse_ingredient(sentence)
+                amount_obj = result.amount[0] if result.amount else None
+            except Exception:
+                amount_obj = None
+
+            grams = self._get_ingredient_grams(amount_obj, name_str)
+            scale = grams / 100.0
+
+            db_match = self.lookup_food(name_str)
+            if db_match:
+                total.protein += db_match.protein * scale
+                total.carbs += db_match.carbs * scale
+                total.fats += db_match.fats * scale
+                total.calories += db_match.calories * scale
+                matches += 1
+                logger.debug("Matched ingredient '%s' -> P:%.1f C:%.1f F:%.1f Cal:%d (grams: %.1f)",
+                             name_str, db_match.protein * scale, db_match.carbs * scale,
+                             db_match.fats * scale, db_match.calories * scale, grams)
+            else:
+                logger.debug("No match for ingredient '%s'", name_str)
+
+        if matches > 0:
+            servings = self._extract_servings(description_for_servings)
+            if servings > 1:
+                total.protein /= servings
+                total.carbs /= servings
+                total.fats /= servings
+                total.calories /= servings
+                logger.info("Scaled aggregated macros by %g servings", servings)
+
+            total.protein = round(total.protein, 2)
+            total.carbs = round(total.carbs, 2)
+            total.fats = round(total.fats, 2)
+            total.calories = int(round(total.calories))
+
+            logger.info("Aggregated %d/%d ingredient matches: P:%.1f C:%.1f F:%.1f Cal:%d",
+                        matches, len(ingredients), total.protein, total.carbs, total.fats, total.calories)
+        else:
+            total.calculate_calories_atwater()
+
+        return total
+
     def analyze(self, description: str) -> tuple[MacroNutrients, list[dict[str, str]]]:
         """
         Analyze a free-form text description and return aggregated macros and ingredients list.
@@ -346,62 +478,13 @@ class NutritionAnalyzer:
             return self._analyze_basic(desc_clean)
 
         # 1. Try direct regex macro extraction
-        cal_patterns = [
-            r'(?:calories|cal|kcal|energy|θερμίδες|θερμιδες)[:\-\s]*(\d+)',
-            r'(\d+)\s*(?:calories|cal|kcal|energy|θερμίδες|θερμιδες)'
-        ]
-        calories = None
-        for pat in cal_patterns:
-            m = re.search(pat, desc_clean, re.IGNORECASE)
-            if m:
-                calories = int(m.group(1))
-                break
-
-        prot_patterns = [
-            r'(?:protein|prot|πρωτεΐνη|πρωτεΐνης|πρωτεινη|πρωτεινης)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
-            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:protein|prot|πρωτεΐνη|πρωτεΐνης|πρωτεινη|πρωτεινης)\b'
-        ]
-        protein = None
-        for pat in prot_patterns:
-            m = re.search(pat, desc_clean, re.IGNORECASE)
-            if m:
-                protein = float(m.group(1))
-                break
-
-        carb_patterns = [
-            r'(?:carbs|carb|carbohydrates|carbohydrate|υδατάνθρακες|υδατανθρακες)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
-            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:carbs|carb|carbohydrates|carbohydrate|υδατάνθρακες|υδατανθρακες)\b'
-        ]
-        carbs = None
-        for pat in carb_patterns:
-            m = re.search(pat, desc_clean, re.IGNORECASE)
-            if m:
-                carbs = float(m.group(1))
-                break
-
-        fat_patterns = [
-            r'(?:fats|fat|lipid|lipids|λίπη|λιπαρά|λιπαρα|λιπος)[:\-\s]*(\d+(?:\.\d+)?)g?\b',
-            r'(\d+(?:\.\d+)?)\s*(?:g|γρ|γραμμάρια|γραμμαρια)?\s*(?:fats|fat|lipid|lipids|λίπη|λιπαρά|λιπαρα|λιπος)\b'
-        ]
-        fats = None
-        for pat in fat_patterns:
-            m = re.search(pat, desc_clean, re.IGNORECASE)
-            if m:
-                fats = float(m.group(1))
-                break
-
-        # If we found any explicit macros, use them directly
-        if calories is not None or protein is not None or carbs is not None or fats is not None:
+        explicit = self._extract_explicit_macros(desc_clean)
+        if explicit:
             logger.info(
                 "Extracted explicit macros: P:%s C:%s F:%s Cal:%s",
-                protein, carbs, fats, calories
+                explicit.protein, explicit.carbs, explicit.fats, explicit.calories
             )
-            return MacroNutrients(
-                protein=protein or 0.0,
-                carbs=carbs or 0.0,
-                fats=fats or 0.0,
-                calories=calories or 0
-            ), ingredients_list
+            return explicit, ingredients_list
 
         # 2. Otherwise fall back to ingredient-parser-nlp and SQLite lookups
         total = MacroNutrients()
@@ -637,6 +720,9 @@ class NutritionAnalyzer:
         }
 
         if not unit_str:
+            # If the quantity is large (e.g. >= 15) and unit is empty, it's almost certainly grams/ml
+            if qty >= 15.0:
+                return qty
             # Check if there is a default serving in DB even for unitless input
             db_match = self.lookup_food(name_str)
             if db_match and db_match.serving:
