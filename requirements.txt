@@ -5,5 +5,5 @@ pyktok>=0.0.31
 Flask>=3.0.0
 translate>=3.6.0
 supadata>=0.1.0
-psycopg2-binary>=2.9.0
+supabase>=2.3.0
 

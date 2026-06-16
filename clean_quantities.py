@@ -110,8 +110,8 @@ def clean_table(table_identifier: str) -> None:
 
 
 def main():
-    if not os.environ.get("DATABASE_URL"):
-        logger.error("DATABASE_URL environment variable is not set. Please set it in your environment or .env file.")
+    if not os.environ.get("SUPABASE_URL") or not os.environ.get("SUPABASE_KEY"):
+        logger.error("SUPABASE_URL and SUPABASE_KEY environment variables are not set. Please set them in your environment or .env file.")
         sys.exit(1)
 
     logger.info("Starting quantity cleanup migration...")

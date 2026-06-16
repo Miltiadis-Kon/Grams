@@ -162,7 +162,8 @@ This repository is pre-configured with a GitHub Actions workflow to run the TikT
 ### Step 1: Set up Repository Secrets
 In your GitHub repository, go to **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
 
-- `DATABASE_URL`: Your remote PostgreSQL connection string (e.g. Supabase, Neon, etc.).
+- `SUPABASE_URL`: Your Supabase API endpoint URL (e.g. `https://pptghabcewxfaaiplkmi.supabase.co`).
+- `SUPABASE_KEY`: Your Supabase API Service Role key (or anon key if Row-Level Security is disabled/configured to allow anonymous inserts).
 - `GROQ_API_KEY`: Your Groq API key for Llama 3.3 parsing.
 - `SUPADATA_API_KEY`: Your Supadata API key for TikTok video transcript extraction.
 - `TIKTOK_COOKIES_JSON`: A JSON string containing your exported TikTok session cookies (e.g. `[{"name": "...", "value": "..."}]`).

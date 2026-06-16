@@ -30,7 +30,8 @@ jobs:
 
       - name: Run Grams Sync Engine
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SUPADATA_API_KEY: ${{ secrets.SUPADATA_API_KEY }}
           TIKTOK_COOKIES_JSON: ${{ secrets.TIKTOK_COOKIES_JSON }}
