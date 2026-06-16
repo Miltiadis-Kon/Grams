@@ -40,7 +40,7 @@ class RecipeDatabase:
         if not self._db_url:
             raise ValueError(
                 "DATABASE_URL environment variable is missing! PostgreSQL database is required.\n"
-                "Please enable/provision the Replit Database or specify DATABASE_URL in your .env file."
+                "Please specify DATABASE_URL in your .env file or environment variables."
             )
         
         # Map table name based on filepath/identifier

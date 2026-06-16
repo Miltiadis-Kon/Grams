@@ -250,17 +250,26 @@ class TikTokIngester:
     # ── Private: Playwright Extraction ───────────────
 
     def _load_cookies(self) -> list[dict]:
-        """Load session cookies from JSON file."""
-        if not os.path.exists(self._cookies_path):
-            logger.warning(
-                "No cookies file found at %s — TikTok may block unauthenticated requests. "
-                "Export your session cookies to this path for reliable access.",
-                self._cookies_path,
-            )
-            return []
+        """Load session cookies from environment variable or JSON file."""
+        cookies_env = os.environ.get("TIKTOK_COOKIES_JSON")
+        if cookies_env:
+            try:
+                cookies = json.loads(cookies_env)
+                logger.info("Loaded session cookies from TIKTOK_COOKIES_JSON environment variable")
+            except Exception as e:
+                logger.error("Failed to parse TIKTOK_COOKIES_JSON environment variable: %s", e)
+                cookies = []
+        else:
+            if not os.path.exists(self._cookies_path):
+                logger.warning(
+                    "No cookies file found at %s — TikTok may block unauthenticated requests. "
+                    "Export your session cookies to this path for reliable access.",
+                    self._cookies_path,
+                )
+                return []
 
-        with open(self._cookies_path, "r", encoding="utf-8") as fh:
-            cookies = json.load(fh)
+            with open(self._cookies_path, "r", encoding="utf-8") as fh:
+                cookies = json.load(fh)
 
         # Normalize cookie format for Playwright
         normalized = []

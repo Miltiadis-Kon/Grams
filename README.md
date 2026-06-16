@@ -155,34 +155,24 @@ python sync_recipes.py "https://www.tiktok.com/@creator/playlist/1234567" --dela
 - `GET /api/ingredients/search` — Runs prefix-matching FTS5 queries against `opennutrition.db` to autocomplete frontend ingredient edits.
 - `GET /api/barcode/lookup` — Performs barcode lookup from the local DB or proxies to Open Food Facts API (and caches it locally).
 
-Here is the step-by-step guide to adding and running your project on Replit:
+## Automated Ingestion with GitHub Actions
 
-### Step 1: Import or Upload your code to Replit
-You can add your code using one of two simple methods:
+This repository is pre-configured with a GitHub Actions workflow to run the TikTok Recipe Scraper automatically every hour (or manually on-demand).
 
-* **Method A (Recommended - via Git/GitHub):**
-  1. Commit and push your local repository changes to a GitHub repository.
-  2. Go to Replit and click **Create Repl**.
-  3. Select **Import from GitHub** and select your repository.
+### Step 1: Set up Repository Secrets
+In your GitHub repository, go to **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
 
-* **Method B (Manual Upload):**
-  1. Create a new Python template Repl on Replit.
-  2. Drag and drop your project folder files directly from your computer into Replit's file explorer pane.
+- `DATABASE_URL`: Your remote PostgreSQL connection string (e.g. Supabase, Neon, etc.).
+- `GROQ_API_KEY`: Your Groq API key for Llama 3.3 parsing.
+- `SUPADATA_API_KEY`: Your Supadata API key for TikTok video transcript extraction.
+- `TIKTOK_COOKIES_JSON`: A JSON string containing your exported TikTok session cookies (e.g. `[{"name": "...", "value": "..."}]`).
 
-### Step 2: Configure Environment Variables (Secrets)
-Replit keeps credentials hidden securely:
-1. In your Repl workspace, look at the left sidebar tools and click on **Secrets** (sometimes named Environment Variables).
-2. Add the following keys:
-   - **Key**: `GROQ_API_KEY`  
-     **Value**: `YOUR_GROQ_API_KEY`
-   - **Key**: `DATABASE_URL`  
-     **Value**: `postgresql://postgres:password@helium/heliumdb?sslmode=disable` (Note: If you provisioned Replit's database tool directly from the sidebar, it will auto-inject the `DATABASE_URL` for you, so you only need to add `GROQ_API_KEY`!)
+### Step 2: Configure Playlist URL (Optional)
+If you want to sync a playlist other than the default hardcoded one, add this repository secret:
+- `TIKTOK_PLAYLIST_URL`: The URL of the TikTok collection or playlist to sync.
 
-### Step 3: Run the Application
-1. Click the big green **Run** button at the top of Replit.
-2. The `.replit` configuration will automatically run `python app.py`, and Replit will open a preview window displaying your Grams web interface!
-3. To run the continuous background TikTok recipe sync, open a new shell tab in Replit and run:
-   ```bash
-   python sync_recipes.py
-   ```
-   *(Note: Remember to enable Replit's Always-On feature in your Repl workspace settings if you want this scheduled hourly scraper to keep running when you close your browser tab).*
+### Step 3: Trigger Scraper
+The workflow runs automatically every hour. To trigger it manually:
+1. Navigate to the **Actions** tab of your repository on GitHub.
+2. Select the **TikTok Recipe Scraper** workflow.
+3. Click the **Run workflow** dropdown and click the green button.

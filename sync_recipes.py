@@ -27,7 +27,8 @@ logger = logging.getLogger("sync_recipes")
 
 def main():
 
-    given_url = "https://vm.tiktok.com/ZN9jNUVd4qWnw-0AhXA/"
+    import os
+    given_url = os.environ.get("TIKTOK_PLAYLIST_URL", "https://vm.tiktok.com/ZN9jNUVd4qWnw-0AhXA/")
     delay = 0
 
     # Resolve redirect to get the actual URL
