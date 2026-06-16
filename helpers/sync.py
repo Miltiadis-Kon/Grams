@@ -234,6 +234,36 @@ class SyncPipeline:
 
         return _json.loads(raw_text)
 
+    def _sanitize_ingredients(self, ingredients: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Sanitize ingredient list by replacing empty or non-numeric quantities
+        with the default quantity '1'.
+        """
+        sanitized = []
+        for ing in ingredients:
+            name = ing.get("name", "").strip()
+            qty = ing.get("quantity", "")
+            qty_str = str(qty).strip() if qty is not None else ""
+            
+            # Check if there is at least one digit or unicode fraction
+            has_numeric = False
+            for char in qty_str:
+                if char.isdigit():
+                    has_numeric = True
+                    break
+                if '\u00bc' <= char <= '\u00be' or '\u2150' <= char <= '\u2189':
+                    has_numeric = True
+                    break
+            
+            if not has_numeric:
+                qty_str = "1"
+            
+            sanitized.append({
+                "name": name,
+                "quantity": qty_str
+            })
+        return sanitized
+
     # ── Processing ────────────────────────────────────────────────────────────
 
     def process(
@@ -296,7 +326,7 @@ class SyncPipeline:
                     name = llm_title
                 
                 if llm_ingredients:
-                    ingredients = llm_ingredients
+                    ingredients = self._sanitize_ingredients(llm_ingredients)
                     has_ingredients = True
                     macros = self._nutrition.analyze_ingredients(ingredients, description_for_servings=description)
                     logger.info("Ollama identified recipe in description for '%s' with %d ingredients. Calculated macros: P:%.1f C:%.1f F:%.1f Cal:%d",
@@ -357,7 +387,7 @@ class SyncPipeline:
                             "Ollama identified recipe from transcript '%s' with %d ingredient(s)",
                             name, len(llm_ingredients),
                         )
-                        ingredients = llm_ingredients
+                        ingredients = self._sanitize_ingredients(llm_ingredients)
                         # Always compute macros using OpenNutrition
                         macros = self._nutrition.analyze_ingredients(ingredients, description_for_servings=description)
                         description = f"{description}\n\n[Ollama Parsed Ingredients & Macros]"
