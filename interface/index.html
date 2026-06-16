@@ -1193,6 +1193,12 @@ function getFiltered() {
     if (m.calories > 0 && Math.round(m.calories) > maxCal) return false;
     if (m.carbs > 0 && Math.round(m.carbs) > maxCarb) return false;
     if (!q) return true;
+    if (q.includes(',')) {
+      const terms = q.split(',').map(t => t.trim()).filter(Boolean);
+      return terms.every(term => 
+        (r.ingredients||[]).some(i => (i.name||'').toLowerCase().includes(term))
+      );
+    }
     if ((r.name||'').toLowerCase().includes(q)) return true;
     if ((r.description||'').toLowerCase().includes(q)) return true;
     if ((r.ingredients||[]).some(i => (i.name||'').toLowerCase().includes(q))) return true;

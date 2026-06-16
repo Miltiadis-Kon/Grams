@@ -8,8 +8,10 @@ from flask import Flask, jsonify, request, send_from_directory
 
 app = Flask(__name__, static_url_path='', static_folder='interface')
 
+from database import RecipeDatabase
 DB_FILE_PATH = os.path.join(os.path.dirname(__abspath__ := os.path.abspath(__file__)), "database", "recipes_db.json")
 NUTRITION_DB_PATH = os.path.join(os.path.dirname(__abspath__), "data", "opennutrition.db")
+db = RecipeDatabase(DB_FILE_PATH)
 
 def calculate_recipe_macros_from_ingredients(ingredients):
     try:
@@ -103,24 +105,21 @@ def index():
 
 @app.route('/recipes_db.json')
 def get_db():
-    if os.path.exists(DB_FILE_PATH):
-        try:
-            with open(DB_FILE_PATH, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            # Make sure all macros are rounded to nearest int in memory/response
-            for recipe in data.values():
-                if 'macros' in recipe:
-                    m = recipe['macros']
-                    recipe['macros'] = {
-                        "protein": int(round(m.get("protein", 0))),
-                        "carbs": int(round(m.get("carbs", 0))),
-                        "fats": int(round(m.get("fats", 0))),
-                        "calories": int(round(m.get("calories", 0)))
-                    }
-            return jsonify(data)
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    return jsonify({})
+    try:
+        data = db.get_all()
+        # Make sure all macros are rounded to nearest int in memory/response
+        for recipe in data.values():
+            if 'macros' in recipe:
+                m = recipe['macros']
+                recipe['macros'] = {
+                    "protein": int(round(m.get("protein", 0))),
+                    "carbs": int(round(m.get("carbs", 0))),
+                    "fats": int(round(m.get("fats", 0))),
+                    "calories": int(round(m.get("calories", 0)))
+                }
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/recipes/calculate_macros', methods=['POST'])
 def calculate_macros():
@@ -141,48 +140,35 @@ def update_recipe():
             return jsonify({"error": "Missing recipe ID"}), 400
 
         # Load current data
-        data = {}
-        if os.path.exists(DB_FILE_PATH):
-            with open(DB_FILE_PATH, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-
-        if recipe_id not in data:
+        recipe = db.get(recipe_id)
+        if not recipe:
             return jsonify({"error": "Recipe not found"}), 404
 
         # Update fields
-        data[recipe_id]['name'] = req_data.get('name', data[recipe_id].get('name'))
-        data[recipe_id]['ingredients'] = req_data.get('ingredients', [])
+        recipe['name'] = req_data.get('name', recipe.get('name'))
+        recipe['ingredients'] = req_data.get('ingredients', [])
         
         # Calculate macros strictly from ingredients (block user custom updates)
-        calc_result = calculate_recipe_macros_from_ingredients(data[recipe_id]['ingredients'])
-        data[recipe_id]['macros'] = {
+        calc_result = calculate_recipe_macros_from_ingredients(recipe['ingredients'])
+        recipe['macros'] = {
             "protein": calc_result["protein"],
             "carbs": calc_result["carbs"],
             "fats": calc_result["fats"],
             "calories": calc_result["calories"]
         }
         
-        data[recipe_id]['tags'] = req_data.get('tags', [])
+        recipe['tags'] = req_data.get('tags', [])
         
         # Optionally update description/url if provided
         if 'description' in req_data:
-            data[recipe_id]['description'] = req_data['description']
+            recipe['description'] = req_data['description']
         if 'url' in req_data:
-            data[recipe_id]['url'] = req_data['url']
+            recipe['url'] = req_data['url']
 
-        # Save atomically
-        dir_name = os.path.dirname(DB_FILE_PATH) or "."
-        fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix=".tmp")
-        try:
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-            os.replace(tmp_path, DB_FILE_PATH)
-        except Exception as e:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-            raise e
+        # Save via database helper
+        db.update(recipe_id, recipe)
 
-        return jsonify({"success": True, "recipe": data[recipe_id]})
+        return jsonify({"success": True, "recipe": recipe})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -298,4 +284,6 @@ def lookup_barcode():
     return jsonify({"success": False, "error": "Product not found"}), 404
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=7000, debug=True)
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host=host, port=port, debug=True)
