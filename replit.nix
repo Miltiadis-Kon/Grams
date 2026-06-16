@@ -5,7 +5,7 @@
     pkgs.nss
     pkgs.nspr
     pkgs.atk
-    pkgs.at-spi2-atk
+    pkgs.at-spi2-core
     pkgs.cups
     pkgs.libdrm
     pkgs.expat
@@ -17,7 +17,7 @@
     pkgs.xorg.libXrandr
     pkgs.xorg.libXext
     pkgs.xorg.libX11
-    pkgs.libgbm
+    pkgs.mesa
     pkgs.pango
     pkgs.cairo
     pkgs.alsa-lib
