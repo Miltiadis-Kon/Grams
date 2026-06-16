@@ -7,6 +7,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("migrate_to_postgres")
 
 def migrate():
+    # Load environment variables from .env if it exists
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_path = os.path.join(base_dir, ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ[key.strip()] = val.strip()
+
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         logger.error("DATABASE_URL is not set in the environment. Migration cannot run.")

@@ -1,4 +1,6 @@
 import os
+import config
+
 import re
 import json
 import sqlite3
