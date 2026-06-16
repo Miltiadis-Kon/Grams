@@ -160,6 +160,7 @@ python sync_recipes.py "https://www.tiktok.com/@creator/playlist/1234567" --dela
 This repository is pre-configured with a GitHub Actions workflow to run the TikTok Recipe Scraper automatically every hour (or manually on-demand).
 
 ### Step 1: Set up Repository Secrets
+
 In your GitHub repository, go to **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
 
 - `SUPABASE_URL`: Your Supabase API endpoint URL (e.g. `https://pptghabcewxfaaiplkmi.supabase.co`).
@@ -169,11 +170,52 @@ In your GitHub repository, go to **Settings** > **Secrets and variables** > **Ac
 - `TIKTOK_COOKIES_JSON`: A JSON string containing your exported TikTok session cookies (e.g. `[{"name": "...", "value": "..."}]`).
 
 ### Step 2: Configure Playlist URL (Optional)
+
 If you want to sync a playlist other than the default hardcoded one, add this repository secret:
+
 - `TIKTOK_PLAYLIST_URL`: The URL of the TikTok collection or playlist to sync.
 
 ### Step 3: Trigger Scraper
+
 The workflow runs automatically every hour. To trigger it manually:
+
 1. Navigate to the **Actions** tab of your repository on GitHub.
 2. Select the **TikTok Recipe Scraper** workflow.
 3. Click the **Run workflow** dropdown and click the green button.
+
+Since the scraper is running on GitHub Actions, you only need to host the Flask web application (the frontend and APIs) on Render.
+
+Here are the precise settings to configure your Render Web Service:
+
+1. Create the Web Service
+Log in to the Render Dashboard.
+Click New > Web Service.
+Connect your GitHub repository.
+2. Configure Settings
+Set the following properties in the creation form:
+
+Name: grams-recipe-app
+Region: Choose the one closest to you (e.g., Frankfurt or Oregon)
+Branch: main
+Runtime: Python
+Build Command (Installs requirements and gunicorn production server):
+bash
+pip install -r requirements.txt && pip install gunicorn
+Start Command:
+bash
+gunicorn app:app
+NOTE
+
+You do not need to install Playwright or Chromium on Render because the scraper runs entirely on GitHub Actions. This keeps your build fast and lightweight.
+
+1. Add Environment Variables
+Scroll down to Environment Variables and add the credentials the frontend needs to query Supabase and calculate macros:
+
+Key Value
+SUPABASE_URL Your Supabase Project URL (e.g. <https://pptghabcewxfaaiplkmi.supabase.co>)
+SUPABASE_KEY Your Supabase service_role or anon key
+GROQ_API_KEY Your Groq API key
+PYTHON_VERSION 3.10 (Ensures compatibility)
+Click Create Web Service. Render will deploy your Flask frontend, and your web app will be live at the provided .onrender.com URL.
+
+4:57 PM
