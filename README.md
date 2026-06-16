@@ -12,11 +12,12 @@ The project has been organized into a professional, modular architecture:
 Grams/
 ├── database/                # Persistence & Canonical Schemas
 │   ├── __init__.py          # Database package exports
-│   ├── database.py          # Thread-safe, atomic JSON database engine
-│   ├── models.py            # Dataclasses matching required schemas
-│   └── recipes_db.json      # Canonical recipe storage
+│   ├── database.py          # Thread-safe PostgreSQL database engine
+│   └── models.py            # Dataclasses matching required schemas
 ├── interface/               # Frontend Assets
 │   ├── index.html           # Modern Web UI (rebranded Macro Finder)
+│   ├── manifest.json        # Progressive Web App manifest
+│   ├── sw.js                # Service Worker for offline/caching support
 │   └── baker.png            # Application logo
 ├── helpers/                 # Application Core Logic
 │   ├── __init__.py          # Helpers package exports
@@ -31,7 +32,6 @@ Grams/
 │   └── opennutrition_foods.tsv
 ├── app.py                   # Flask Web Server
 ├── config.py                # Centralized configurations & paths
-├── main.py                  # Test / Validation suite
 ├── sync_recipes.py          # CLI continuous rate-limited synchronization
 ├── requirements.txt         # Package dependencies
 └── README.md                # System documentation
@@ -55,6 +55,7 @@ graph TD
 ```
 
 ### 1. Headless TikTok Scraper (`helpers/ingester.py`)
+
 - Uses **Playwright** with custom user-agents to render JavaScript-heavy TikTok page structures.
 - Supports injecting cookies from `tiktok_cookies.json` to bypass logins and bot detection.
 - Exposes two scraper behaviors:
@@ -62,6 +63,7 @@ graph TD
   - **Detailed Video Scrape**: Visits individual video pages to grab full captions containing instructions/ingredients, parses hydration metadata from scripts (`SIGI_STATE`), and handles DOM fallback selectors.
 
 ### 2. NLP Ingredient Parsing & Local SQLite Lookup (`helpers/nutrition.py`)
+
 - Utilizes the `ingredient-parser` NLP package to extract quantities, units, and food names from free-text descriptions.
 - Queries a local SQLite index of the **OpenNutrition dataset** (a curated 100g metric dataset) using an FTS5 full-text search index for fast name matching.
 - Automatically handles:
@@ -69,12 +71,13 @@ graph TD
   - **Weight Scaling**: Automatically converts non-metric units (e.g. cups, tbsp, tsp, ounces, eggs, cloves) to equivalent metric weights in grams.
   - **Atwater fallback**: Automatically estimates calories based on standard macronutrient ratios if direct database energy lookups fail.
 
-### 3. Thread-Safe Atomic Persistence (`database/database.py`)
-- Employs a file-backed JSON structure indexed by unique video ID.
-- Access is guarded by a thread-safe mutex lock.
-- Database saves use atomic tempfile replacement (`tempfile.mkstemp` + `os.replace`) to eliminate file corruption risk.
+### 3. Thread-Safe PostgreSQL Backend (`database/database.py`)
+
+- Employs a PostgreSQL database connection with dedicated tables for active and unfilled recipes.
+- Access is thread-safe, utilizing connection pooling/management suited for concurrent environments.
 
 ### 4. Rule-Based Auto-Tagger (`helpers/tagger.py`)
+
 - Automatically assigns diet tags (e.g., `High-Protein`, `Keto-Friendly`, `Low-Calorie`) based on calculated macros.
 - Scans recipe names and descriptions against configurable keyword mappings (defined in `config.py`) to auto-assign style tags (e.g., `Meal Prep`, `Breakfast`, `Air Fryer`, `Seafood`, `Vegan`).
 - Merges auto-generated tags with manual overrides.
@@ -84,17 +87,20 @@ graph TD
 ## Installation & Setup
 
 1. **Install Python dependencies**:
+
    ```bash
    pip install -r requirements.txt
    ```
 
 2. **Install Playwright Browsers**:
+
    ```bash
    playwright install chromium
    ```
 
 3. **Configure Authentication (Optional but recommended)**:
    Export your TikTok session cookies to `tiktok_cookies.json` in the project root folder. The JSON structure should look like this:
+
    ```json
    [
      {
@@ -114,6 +120,7 @@ graph TD
 ## Ingesting Recipes
 
 ### Continuous Slow Synchronization (Recommended)
+
 Use the `sync_recipes.py` CLI script to scrape a playlist. It extracts all video links, checks the local database, and visits detailed pages for **new videos only**, sleeping between page hits to keep you safe from rate limits:
 
 ```bash
@@ -129,9 +136,11 @@ python sync_recipes.py "https://www.tiktok.com/@creator/playlist/1234567" --dela
 ## Running the Web Application
 
 1. **Start the Flask Web Server**:
+
    ```bash
    python app.py
    ```
+
 2. **Access the Web Interface**:
    Open your browser and navigate to: [http://127.0.0.1:5000/](http://127.0.0.1:5000/)
 
@@ -145,3 +154,35 @@ python sync_recipes.py "https://www.tiktok.com/@creator/playlist/1234567" --dela
 - `POST /api/recipes/update` — Atomically edits a recipe record, recalculating macros strictly from ingredient items.
 - `GET /api/ingredients/search` — Runs prefix-matching FTS5 queries against `opennutrition.db` to autocomplete frontend ingredient edits.
 - `GET /api/barcode/lookup` — Performs barcode lookup from the local DB or proxies to Open Food Facts API (and caches it locally).
+
+Here is the step-by-step guide to adding and running your project on Replit:
+
+### Step 1: Import or Upload your code to Replit
+You can add your code using one of two simple methods:
+
+* **Method A (Recommended - via Git/GitHub):**
+  1. Commit and push your local repository changes to a GitHub repository.
+  2. Go to Replit and click **Create Repl**.
+  3. Select **Import from GitHub** and select your repository.
+
+* **Method B (Manual Upload):**
+  1. Create a new Python template Repl on Replit.
+  2. Drag and drop your project folder files directly from your computer into Replit's file explorer pane.
+
+### Step 2: Configure Environment Variables (Secrets)
+Replit keeps credentials hidden securely:
+1. In your Repl workspace, look at the left sidebar tools and click on **Secrets** (sometimes named Environment Variables).
+2. Add the following keys:
+   - **Key**: `GROQ_API_KEY`  
+     **Value**: `YOUR_GROQ_API_KEY`
+   - **Key**: `DATABASE_URL`  
+     **Value**: `postgresql://postgres:password@helium/heliumdb?sslmode=disable` (Note: If you provisioned Replit's database tool directly from the sidebar, it will auto-inject the `DATABASE_URL` for you, so you only need to add `GROQ_API_KEY`!)
+
+### Step 3: Run the Application
+1. Click the big green **Run** button at the top of Replit.
+2. The `.replit` configuration will automatically run `python app.py`, and Replit will open a preview window displaying your Grams web interface!
+3. To run the continuous background TikTok recipe sync, open a new shell tab in Replit and run:
+   ```bash
+   python sync_recipes.py
+   ```
+   *(Note: Remember to enable Replit's Always-On feature in your Repl workspace settings if you want this scheduled hourly scraper to keep running when you close your browser tab).*
