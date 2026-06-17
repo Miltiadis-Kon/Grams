@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Sofia+Pro&display=swap" rel="stylesheet" />
+  <link href="./css/main.css" rel="stylesheet" />
+  <title>Grams - Home</title>
+</head>
+<body>
+  <div class="v701_909">
+    <!-- Top Welcome & Search -->
+    <div style="padding: 24px 24px 12px; margin-top: 10px;">
+      <h2 style="font-family: 'Outfit'; font-weight: 800; font-size: 26px; color: #0a2533; display: flex; align-items: center; gap: 8px;">
+        <img src="../baker.png" style="height: 36px; width: 36px; border-radius: 10px;" alt="logo">
+        Grams
+      </h2>
+      <p style="font-size: 13px; color: #748189; margin-top: 4px;">Find and adjust your macros instantly</p>
+    </div>
+
+    <!-- Search Input Overlapping Figma Search Bar -->
+    <div class="v701_910" style="background: none; border: 1px solid var(--primary-40); border-radius: 16px; background-color: #f1f5f5; display: flex; align-items: center; padding: 0 16px; box-shadow: inset 0 2px 4px rgba(10,37,51,0.02);">
+      <svg width="20" height="20" fill="none" stroke="#748189" stroke-width="2.5" viewBox="0 0 24 24" style="margin-right: 8px;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="searchInput" placeholder="Search title, ingredient, tag..." style="border: none; background: transparent; outline: none; width: 100%; font-family: inherit; font-size: 15px; color: #0a2533;" autocomplete="off">
+    </div>
+    
+    <!-- Category Filter Pills -->
+    <div class="v701_935">
+      <div class="v701_936 category-pill active" data-category="all" onclick="setCategory('all', this)"><span class="v701_937">All</span></div>
+      <div class="v701_938 category-pill" data-category="breakfast" onclick="setCategory('breakfast', this)"><span class="v701_939">Breakfast</span></div>
+      <div class="v701_940 category-pill" data-category="lunch" onclick="setCategory('lunch', this)"><span class="v701_941">Lunch</span></div>
+      <div class="v701_942 category-pill" data-category="dinner" onclick="setCategory('dinner', this)"><span class="v701_943">Dinner</span></div>
+      <div class="v701_938 category-pill" data-category="snack" onclick="setCategory('snack', this)" style="background: rgba(241,245,245,1);"><span class="v701_939" style="color: rgba(10,37,51,1);">Snack</span></div>
+    </div>
+
+    <!-- Popular Recipes Section (View All removed) -->
+    <div class="v701_920">
+      <div class="v701_921"><span class="v701_922">Popular Recipes</span></div>
+      <div class="v701_924" id="popularContainer"></div>
+    </div>
+
+    <!-- Editor's Choice Section (View All removed) -->
+    <div class="v701_912">
+      <div class="v701_913"><span class="v701_914">Editor's Choice</span></div>
+      <div class="v701_916" id="editorsChoiceContainer"></div>
+    </div>
+  </div>
+</body>
+</html>

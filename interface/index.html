@@ -10,989 +10,135 @@
 <link rel="icon" type="image/png" href="baker.png">
 <link rel="apple-touch-icon" href="baker.png">
 <link rel="manifest" href="manifest.json">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- High-end Outfit & Poppins Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- QR Code / Barcode Scanning library -->
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-<style>
-:root {
-  --primary-100: #129575;
-  --primary-80: #71B1A1;
-  --primary-60: #AFD3CA;
-  --primary-40: #DBEBE7;
-  --primary-20: #F6FAF9;
-  --secondary-100: #FF9C00;
-  --secondary-20: #FFE1B3;
-  --rating: #FFAD30;
-  --success: #31B057;
-  --success-bg: #EAF7EE;
-  
-  --neutral-white: #FFFFFF;
-  --neutral-gray4: #D9D9D9;
-  --neutral-gray3: #A9A9A9;
-  --neutral-gray2: #797979;
-  --neutral-gray1: #484848;
-  --neutral-black: #000000;
-  
-  --shadow-sm: 0 2px 8px rgba(18, 149, 117, 0.08);
-  --shadow-md: 0 6px 16px rgba(18, 149, 117, 0.12);
-  --shadow-lg: 0 12px 30px rgba(0, 0, 0, 0.12);
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: 'Poppins', sans-serif;
-  background-color: var(--primary-20);
-  color: var(--neutral-gray1);
-  min-height: 100vh;
-  padding-bottom: 80px;
-}
-
-/* Header styling based on Figma Colors */
-.header {
-  background: linear-gradient(135deg, var(--primary-100), var(--primary-80));
-  padding: 24px 20px 32px;
-  border-radius: 0 0 32px 32px;
-  box-shadow: var(--shadow-md);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.header-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.header-title {
-  color: var(--neutral-white);
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
-.recipe-count {
-  background: rgba(255, 255, 255, 0.25);
-  color: var(--neutral-white);
-  border-radius: 20px;
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* Search Box design */
-.search-wrap {
-  position: relative;
-}
-
-.search-input {
-  width: 100%;
-  padding: 14px 48px;
-  border-radius: 16px;
-  border: 2px solid transparent;
-  background: var(--neutral-white);
-  font-size: 14px;
-  font-family: 'Poppins', sans-serif;
-  color: var(--neutral-black);
-  outline: none;
-  transition: all 0.25s ease;
-  box-shadow: var(--shadow-sm);
-}
-
-.search-input:focus {
-  border-color: var(--primary-100);
-  box-shadow: var(--shadow-md);
-}
-
-.search-icon {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--primary-100);
-}
-
-.search-clear {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--neutral-gray3);
-  display: none;
-  padding: 2px;
-}
-
-/* Filter Pills styling */
-.filter-section {
-  padding: 20px 20px 0;
-}
-
-.filter-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--primary-100);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 10px;
-}
-
-.pills-row {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-
-.pills-row::-webkit-scrollbar {
-  display: none;
-}
-
-.pill {
-  flex-shrink: 0;
-  padding: 8px 18px;
-  border-radius: 12px;
-  border: 1px solid var(--primary-40);
-  background: var(--neutral-white);
-  color: var(--primary-100);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: 'Poppins', sans-serif;
-}
-
-.pill:hover {
-  background: var(--primary-20);
-}
-
-.pill.active {
-  background: var(--primary-100);
-  color: var(--neutral-white);
-  border-color: var(--primary-100);
-  box-shadow: var(--shadow-sm);
-}
-
-/* Macro Filters styling */
-.macro-row {
-  display: flex;
-  gap: 10px;
-  padding: 16px 20px 0;
-  flex-wrap: wrap;
-}
-
-.macro-filter {
-  flex: 1;
-  min-width: 100px;
-  background: var(--neutral-white);
-  border-radius: 14px;
-  padding: 10px 14px;
-  border: 1px solid var(--primary-40);
-  box-shadow: var(--shadow-sm);
-}
-
-.macro-filter label {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--primary-80);
-  text-transform: uppercase;
-  display: block;
-  margin-bottom: 4px;
-}
-
-.macro-filter input {
-  width: 100%;
-  border: none;
-  outline: none;
-  font-size: 14px;
-  font-family: 'Poppins', sans-serif;
-  color: var(--neutral-gray1);
-  background: transparent;
-}
-
-/* Card list styling */
-.cards {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.card {
-  background: var(--neutral-white);
-  border-radius: 20px;
-  border: 1px solid var(--primary-40);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  cursor: pointer;
-  transition: all 0.25s ease;
-}
-
-.card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 18px 18px 14px;
-}
-
-.card-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 14px;
-  background: var(--primary-20);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--primary-100);
-  border: 1px solid var(--primary-40);
-}
-
-.card-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.card-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--neutral-black);
-  line-height: 1.35;
-  margin-bottom: 6px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.card-tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.tag {
-  padding: 3px 10px;
-  border-radius: 50px;
-  font-size: 11px;
-  font-weight: 500;
-  background: var(--primary-20);
-  color: var(--primary-100);
-}
-
-/* Macros row in Card */
-.macros {
-  display: flex;
-  border-top: 1px solid var(--primary-20);
-  padding: 12px 18px;
-}
-
-.macro {
-  flex: 1;
-  text-align: center;
-}
-
-.macro-val {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--primary-100);
-}
-
-.macro-lbl {
-  font-size: 10px;
-  color: var(--neutral-gray2);
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.macro:not(:last-child) {
-  border-right: 1px solid var(--primary-20);
-}
-
-.calories .macro-val {
-  color: var(--secondary-100);
-}
-
-/* Actions in Card */
-.card-actions {
-  display: flex;
-  gap: 10px;
-  padding: 0 18px 18px;
-}
-
-.btn-details {
-  flex: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid var(--primary-100);
-  background: var(--primary-100);
-  color: var(--neutral-white);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: 'Poppins', sans-serif;
-  transition: all 0.2s ease;
-}
-
-.btn-details:hover {
-  background: #0f7d62;
-  border-color: #0f7d62;
-}
-
-.btn-edit {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid var(--secondary-100);
-  background: transparent;
-  color: var(--secondary-100);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  font-family: 'Poppins', sans-serif;
-  transition: all 0.2s ease;
-}
-
-.btn-edit:hover {
-  background: var(--secondary-20);
-}
-
-/* Details and Video modal */
-.modal {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  z-index: 200;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.modal.open {
-  display: flex;
-}
-
-.modal-box {
-  background: var(--neutral-white);
-  border-radius: 28px 28px 0 0;
-  padding: 24px;
-  width: 100%;
-  max-width: 480px;
-  max-height: 92vh;
-  overflow-y: auto;
-  position: relative;
-  box-shadow: var(--shadow-lg);
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
-.modal-header {
-  position: relative;
-  margin-bottom: 16px;
-  padding-right: 40px;
-}
-
-.modal-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--neutral-black);
-}
-
-.modal-close {
-  position: absolute;
-  top: 0;
-  right: 0;
-  background: var(--primary-20);
-  border: none;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-100);
-  transition: all 0.2s ease;
-}
-
-.modal-close:hover {
-  background: var(--primary-40);
-}
-
-/* Video Frame (TikTok Embed style) */
-.video-container {
-  width: 100%;
-  border-radius: 16px;
-  overflow: hidden;
-  background: var(--neutral-black);
-  margin-bottom: 16px;
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  justify-content: center;
-}
-
-.video-iframe {
-  width: 100%;
-  height: 480px;
-  border: none;
-}
-
-/* Creator Info Bar (Figma Inspired) */
-.creator-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--primary-20);
-  margin-bottom: 16px;
-}
-
-.creator-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.creator-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: var(--primary-60);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  color: var(--neutral-white);
-  font-size: 14px;
-}
-
-.creator-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--neutral-black);
-}
-
-.creator-subtitle {
-  font-size: 11px;
-  color: var(--neutral-gray2);
-}
-
-.recipe-stats {
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--neutral-gray2);
-  font-weight: 500;
-}
-
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* Ingredients Section (Figma Components) */
-.details-section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--neutral-black);
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.details-section-count {
-  font-size: 12px;
-  color: var(--neutral-gray2);
-  font-weight: 400;
-}
-
-.figma-ingredients-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.figma-ingredient-card {
-  display: flex;
-  align-items: center;
-  background: var(--primary-20);
-  border-radius: 12px;
-  padding: 12px 16px;
-  border: 1px solid var(--primary-40);
-  transition: all 0.2s ease;
-}
-
-.figma-ingredient-card:hover {
-  background: var(--primary-40);
-}
-
-.figma-ingredient-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--neutral-white);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  margin-right: 12px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
-}
-
-.figma-ingredient-name {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--neutral-gray1);
-}
-
-.figma-ingredient-qty {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--neutral-gray2);
-}
-
-/* Macros Card (below ingredients) */
-.macros-panel {
-  background: var(--neutral-white);
-  border: 1px solid var(--primary-40);
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-sm);
-}
-
-.macros-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.macro-box {
-  background: var(--primary-20);
-  border-radius: 10px;
-  padding: 8px 4px;
-  text-align: center;
-}
-
-.macro-box.calories {
-  background: var(--secondary-20);
-}
-
-.macro-box-val {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--primary-100);
-}
-
-.macro-box.calories .macro-box-val {
-  color: var(--secondary-100);
-}
-
-.macro-box-lbl {
-  font-size: 9px;
-  color: var(--neutral-gray2);
-  font-weight: 500;
-  text-transform: uppercase;
-  margin-top: 2px;
-}
-
-/* Instructions steps layout from figma-to-html(1) */
-.figma-instructions-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.figma-step-card {
-  background: var(--primary-20);
-  border-radius: 12px;
-  padding: 16px;
-  border: 1px solid var(--primary-40);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.figma-step-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--primary-100);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.figma-step-desc {
-  font-size: 13px;
-  color: var(--neutral-gray1);
-  line-height: 1.45;
-}
-
-/* Edit Modal & Form */
-.edit-form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-top: 8px;
-}
-
-.form-group label {
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--primary-100);
-  text-transform: uppercase;
-  margin-bottom: 6px;
-  letter-spacing: 0.5px;
-}
-
-.form-group input, .form-group textarea {
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--primary-40);
-  font-size: 14px;
-  font-family: 'Poppins', sans-serif;
-  color: var(--neutral-black);
-  outline: none;
-  transition: all 0.2s ease;
-  background: var(--primary-20);
-}
-
-.form-group input:focus, .form-group textarea:focus {
-  border-color: var(--primary-100);
-  background: var(--neutral-white);
-  box-shadow: var(--shadow-sm);
-}
-
-/* Read-only macros styling */
-.form-group input.readonly-macro {
-  background-color: var(--neutral-gray4);
-  color: var(--neutral-gray2);
-  cursor: not-allowed;
-  font-weight: 600;
-}
-
-.macro-inputs {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.btn-save {
-  width: 100%;
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--primary-100);
-  color: var(--neutral-white);
-  border: none;
-  font-size: 15px;
-  font-family: 'Poppins', sans-serif;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-sm);
-}
-
-.btn-save:hover {
-  background: #0f7d62;
-  box-shadow: var(--shadow-md);
-}
-
-/* Barcode button style */
-.btn-barcode {
-  background: var(--secondary-20);
-  color: var(--secondary-100);
-  border: 1px solid var(--secondary-100);
-  border-radius: 12px;
-  padding: 10px;
-  font-family: 'Poppins', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  transition: all 0.2s ease;
-}
-
-.btn-barcode:hover {
-  background: var(--secondary-100);
-  color: white;
-}
-
-/* Dynamic Autocomplete List */
-.autocomplete-container {
-  position: relative;
-  flex: 1;
-}
-
-.autocomplete-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: var(--neutral-white);
-  border: 1px solid var(--primary-40);
-  border-radius: 12px;
-  box-shadow: var(--shadow-lg);
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 1000;
-  margin-top: 4px;
-}
-
-.autocomplete-item {
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: 12px;
-  border-bottom: 1px solid var(--primary-20);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: background 0.15s ease;
-}
-
-.autocomplete-item:hover {
-  background: var(--primary-20);
-  color: var(--primary-100);
-}
-
-.autocomplete-item-name {
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 70%;
-}
-
-.autocomplete-item-macros {
-  font-size: 10px;
-  color: var(--neutral-gray2);
-  font-weight: 600;
-}
-
-/* Ingredients edit row */
-.ing-edit-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.ing-edit-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.ing-del {
-  background: #fee2e2;
-  border: none;
-  border-radius: 10px;
-  width: 36px;
-  height: 36px;
-  cursor: pointer;
-  color: #991b1b;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s ease;
-}
-
-.ing-del:hover {
-  background: #fecaca;
-}
-
-.btn-add-ing {
-  background: var(--primary-20);
-  border: 1px dashed var(--primary-100);
-  border-radius: 12px;
-  padding: 10px;
-  width: 100%;
-  color: var(--primary-100);
-  font-family: 'Poppins', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-add-ing:hover {
-  background: var(--primary-40);
-}
-
-/* Empty State */
-.empty {
-  text-align: center;
-  padding: 48px 24px;
-  color: var(--primary-80);
-}
-
-.empty svg {
-  margin-bottom: 12px;
-  opacity: 0.6;
-}
-
-.empty h3 {
-  font-size: 18px;
-  margin-bottom: 6px;
-  color: var(--primary-100);
-}
-
-.missing-badge {
-  background: var(--secondary-20);
-  color: var(--secondary-100);
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  display: inline-block;
-  margin-top: 4px;
-}
-</style>
+<!-- Unified Stylesheet -->
+<link href="css/style.css" rel="stylesheet">
 </head>
 <body>
 
-<div class="header">
-  <div class="header-top">
-    <h1 class="header-title" style="display: flex; align-items: center; gap: 8px;">
-      <img src="baker.png" alt="Grams Logo" style="height: 32px; width: 32px; border-radius: 8px; object-fit: cover; background: white; padding: 2px;">
-      Grams
-    </h1>
-    <span class="recipe-count" id="countBadge">0 recipes</span>
-  </div>
-  <div class="search-wrap">
-    <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input class="search-input" id="searchInput" type="text" placeholder="Search title, ingredient, tag…" autocomplete="off">
-    <button class="search-clear" id="searchClear" onclick="clearSearch()">
-      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
-    </button>
-  </div>
+<!-- App Loading Screen -->
+<div id="app-loading-screen" style="position: absolute; inset: 0; background: #ffffff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.4s ease, visibility 0.4s;">
+  <div style="width: 56px; height: 56px; border: 4px solid var(--primary-20); border-top-color: var(--primary-100); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+  <div style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; color: #0a2533;">Loading Grams...</div>
 </div>
+<style>
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>
 
-<div class="filter-section">
-  <div class="filter-label">Filter by Tag</div>
-  <div class="pills-row" id="pillsRow"></div>
-</div>
+<div class="mobile-viewport">
 
-<div class="macro-row">
-  <div class="macro-filter">
-    <label>Min Protein (g)</label>
-    <input type="number" id="minProtein" placeholder="e.g. 20" min="0">
+  <!-- ==================== VIEW: HOME ==================== -->
+  <div id="view-home" class="app-view v701_909" style="display: block;">
+    <!-- Will be loaded dynamically from home/index.html -->
   </div>
-  <div class="macro-filter">
-    <label>Max Calories</label>
-    <input type="number" id="maxCalories" placeholder="e.g. 500" min="0">
-  </div>
-  <div class="macro-filter">
-    <label>Max Carbs (g)</label>
-    <input type="number" id="maxCarbs" placeholder="e.g. 50" min="0">
-  </div>
-</div>
 
-<div class="cards" id="cardsContainer"></div>
+  <!-- ==================== VIEW: DETAIL ==================== -->
+  <div id="view-detail" class="app-view v701_949" style="display: none;">
+    <!-- Will be loaded dynamically from main/index.html -->
+  </div>
 
-<!-- Details Modal (Embeds TikTok & Figma layouts) -->
-<div class="modal" id="detailsModal" onclick="closeModal('detailsModal')">
-  <div class="modal-box" onclick="event.stopPropagation()">
-    <div class="modal-header" style="display: flex; align-items: center; justify-content: space-between; padding-right: 80px; position: relative;">
-      <div class="modal-title" id="detailsModalTitle" style="flex: 1; margin-right: 12px;">Recipe Details</div>
-      <button class="btn-edit" id="detailsEditBtn" style="padding: 6px 12px; border-radius: 8px; font-size: 12px; margin-right: 12px; border-color: var(--primary-100); color: var(--primary-100); flex-shrink: 0;" onclick="closeModal('detailsModal'); openEdit(currentDetailsId)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        Edit
-      </button>
-      <button class="modal-close" onclick="closeModal('detailsModal')" style="position: absolute; right: 0; top: 0;">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
+  <!-- ==================== VIEW: SEARCH ==================== -->
+  <div id="view-search" class="app-view" style="display: none; padding: 24px 24px 80px;">
+    <div style="margin-top: 10px; margin-bottom: 20px;">
+      <h2 style="font-family: 'Outfit'; font-weight: 800; font-size: 26px; color: #0a2533; margin: 0;">Find Recipes</h2>
+      <p style="font-size: 13px; color: #748189; margin-top: 4px; margin-bottom: 0;">Search by name, ingredients, macros or tags</p>
     </div>
-    
-    <!-- Video Player Container -->
-    <div class="video-container" id="detailsVideoContainer"></div>
-    
-    <!-- Creator Row -->
-    <div class="creator-row">
-      <div class="creator-info">
-        <div class="creator-avatar" id="detailsCreatorAvatar">🧑</div>
+
+    <!-- Search input field -->
+    <div style="background-color: #f1f5f5; border: 1px solid var(--primary-40); border-radius: 16px; display: flex; align-items: center; padding: 0 16px; margin-bottom: 20px; box-shadow: inset 0 2px 4px rgba(10,37,51,0.02); height: 50px;">
+      <svg width="20" height="20" fill="none" stroke="#748189" stroke-width="2.5" viewBox="0 0 24 24" style="margin-right: 8px;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" id="filterSearchInput" placeholder="Search title or ingredient..." style="border: none; background: transparent; outline: none; width: 100%; font-family: inherit; font-size: 15px; color: #0a2533;" autocomplete="off" oninput="runSearchFilter()">
+    </div>
+
+    <!-- Filter Toggle Button (collapsible filter section) -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <span style="font-family: 'Outfit'; font-weight: 700; font-size: 16px; color: #0a2533;">Filters</span>
+      <button onclick="resetSearchFilters()" style="background: none; border: none; color: var(--primary-100); font-weight: 700; font-size: 13px; cursor: pointer; padding: 4px 0; font-family: inherit;">Reset All</button>
+    </div>
+
+    <!-- Collapsible/Expandable Filters Panel -->
+    <div id="searchFiltersPanel" style="background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 20px; padding: 18px; margin-bottom: 24px;">
+      <!-- Macro Sliders Grid -->
+      <div style="display: grid; grid-template-columns: 1fr; gap: 14px; margin-bottom: 18px;">
+        <!-- Min Protein -->
         <div>
-          <div class="creator-name" id="detailsCreatorName">TikTok Creator</div>
-          <div class="creator-subtitle">Original Video Creator</div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <label style="font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; letter-spacing: 0.5px;">Min Protein</label>
+            <span id="display-min-protein" style="font-size: 12px; font-weight: 700; color: #0a2533;">0g</span>
+          </div>
+          <input type="range" id="filter-min-protein" min="0" max="100" value="0" style="width: 100%; accent-color: var(--primary-100); cursor: pointer;" oninput="updateSearchFilterVal('min-protein', this.value)">
+        </div>
+        <!-- Max Carbs -->
+        <div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <label style="font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; letter-spacing: 0.5px;">Max Carbs</label>
+            <span id="display-max-carbs" style="font-size: 12px; font-weight: 700; color: #0a2533;">Any</span>
+          </div>
+          <input type="range" id="filter-max-carbs" min="0" max="150" value="150" style="width: 100%; accent-color: var(--primary-100); cursor: pointer;" oninput="updateSearchFilterVal('max-carbs', this.value)">
+        </div>
+        <!-- Max Fats -->
+        <div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <label style="font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; letter-spacing: 0.5px;">Max Fats</label>
+            <span id="display-max-fats" style="font-size: 12px; font-weight: 700; color: #0a2533;">Any</span>
+          </div>
+          <input type="range" id="filter-max-fats" min="0" max="100" value="100" style="width: 100%; accent-color: var(--primary-100); cursor: pointer;" oninput="updateSearchFilterVal('max-fats', this.value)">
+        </div>
+        <!-- Max Calories -->
+        <div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <label style="font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; letter-spacing: 0.5px;">Max Calories</label>
+            <span id="display-max-cals" style="font-size: 12px; font-weight: 700; color: #0a2533;">Any</span>
+          </div>
+          <input type="range" id="filter-max-cals" min="0" max="1500" step="25" value="1500" style="width: 100%; accent-color: var(--primary-100); cursor: pointer;" oninput="updateSearchFilterVal('max-cals', this.value)">
         </div>
       </div>
-      <div class="recipe-stats">
-        <div class="stat-item">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"/></svg>
-          <span id="detailsServings">2 serves</span>
-        </div>
+
+      <!-- Tag Filters -->
+      <div>
+        <label style="display: block; font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Filter by Tags</label>
+        <div id="searchTagsContainer" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
       </div>
     </div>
-    
-    <!-- Ingredients Section -->
+
+    <!-- Search Results -->
     <div>
-      <div class="details-section-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span>Ingredients</span>
-          <span class="details-section-count" id="detailsIngCount">0 items</span>
-        </div>
-        <div class="multiplier-group" style="display: flex; gap: 4px; background: var(--primary-20); padding: 2px; border-radius: 8px; border: 1px solid var(--primary-40); margin-right: 4px;">
-          <button type="button" class="btn-mult" data-val="0.5" onclick="setPortionMultiplier(0.5)" style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; background: transparent; color: var(--primary-100); transition: all 0.2s;">0.5</button>
-          <button type="button" class="btn-mult active" data-val="1.0" onclick="setPortionMultiplier(1.0)" style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; background: var(--primary-100); color: white; transition: all 0.2s;">1</button>
-          <button type="button" class="btn-mult" data-val="2.0" onclick="setPortionMultiplier(2.0)" style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; background: transparent; color: var(--primary-100); transition: all 0.2s;">2</button>
-        </div>
-      </div>
-      <div class="figma-ingredients-list" id="detailsIngList"></div>
-    </div>
-    
-    <!-- Macros Section (placed below ingredients) -->
-    <div>
-      <div class="details-section-title">Nutrition Facts</div>
-      <div class="macros-panel" id="detailsMacrosPanel"></div>
-    </div>
-    
-    <!-- Instructions Section -->
-    <div>
-      <div class="details-section-title">Instructions</div>
-      <div class="figma-instructions-list" id="detailsInstructionsList"></div>
+      <div style="font-family: 'Outfit'; font-weight: 700; font-size: 18px; color: #0a2533; margin-bottom: 12px;">Results (<span id="searchResultsCount">0</span>)</div>
+      <div id="searchResultsContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
     </div>
   </div>
+
+  <!-- ==================== VIEW: ACCOUNT ==================== -->
+  <div id="view-account" class="app-view v701_1067" style="display: none; padding: 24px 24px 80px;">
+    <!-- Will be loaded dynamically from account/index.html -->
+  </div>
+
+  <!-- ==================== STICKY BOTTOM TAB NAVIGATION ==================== -->
+  <div class="bottom-nav-bar">
+    <div class="nav-item active" id="nav-home" onclick="switchView('home')">
+      <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+      <span style="font-size: 10px; font-weight: 700; margin-top: 3px;">Home</span>
+    </div>
+    <div class="nav-item" id="nav-search" onclick="switchView('search')">
+      <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <span style="font-size: 10px; font-weight: 700; margin-top: 3px;">Search</span>
+    </div>
+    <div class="nav-item" id="nav-account" onclick="switchView('account')">
+      <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2m16-10a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"/></svg>
+      <span style="font-size: 10px; font-weight: 700; margin-top: 3px;">Profile</span>
+    </div>
+  </div>
+
 </div>
 
-<!-- Edit Modal -->
+<!-- ==================== DIALOGS & MODALS ==================== -->
+
+<!-- Edit Recipe Modal -->
 <div class="modal" id="editModal" onclick="closeModal('editModal')">
   <div class="modal-box" onclick="event.stopPropagation()">
     <div class="modal-header">
@@ -1009,7 +155,7 @@ body {
       </div>
       
       <!-- Open Food Facts Barcode lookup panel -->
-      <button type="button" class="btn-barcode" onclick="toggleBarcodeScanner()">
+      <button type="button" class="btn-barcode" onclick="toggleBarcodeScanner()" style="background: var(--secondary-20); color: var(--secondary-100); border: 1px solid var(--secondary-100); border-radius: 12px; padding: 12px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px; width: 100%; border: none; font-family: inherit;">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 5v14M6 5v14M10 5v14M14 5v14M17 5v14M21 5v14"/></svg>
         📷 Scan Barcode / Search Product
       </button>
@@ -1036,11 +182,11 @@ body {
       
       <div class="form-group">
         <label>Macros (Calculated from Ingredients)</label>
-        <div class="macro-inputs">
-          <div class="form-group"><label>Protein (g)</label><input type="number" id="editProtein" class="readonly-macro" readonly></div>
-          <div class="form-group"><label>Carbs (g)</label><input type="number" id="editCarbs" class="readonly-macro" readonly></div>
-          <div class="form-group"><label>Fats (g)</label><input type="number" id="editFats" class="readonly-macro" readonly></div>
-          <div class="form-group"><label>Calories</label><input type="number" id="editCalories" class="readonly-macro" readonly></div>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+          <div class="form-group"><label>Protein (g)</label><input type="number" id="editProtein" readonly style="background-color: var(--primary-40); color: var(--neutral-gray2); cursor: not-allowed; font-weight: 600;"></div>
+          <div class="form-group"><label>Carbs (g)</label><input type="number" id="editCarbs" readonly style="background-color: var(--primary-40); color: var(--neutral-gray2); cursor: not-allowed; font-weight: 600;"></div>
+          <div class="form-group"><label>Fats (g)</label><input type="number" id="editFats" readonly style="background-color: var(--primary-40); color: var(--neutral-gray2); cursor: not-allowed; font-weight: 600;"></div>
+          <div class="form-group"><label>Calories</label><input type="number" id="editCalories" readonly style="background-color: var(--primary-40); color: var(--neutral-gray2); cursor: not-allowed; font-weight: 600;"></div>
         </div>
       </div>
       
@@ -1051,18 +197,91 @@ body {
       
       <div class="form-group">
         <label>Ingredients</label>
-        <div class="ing-edit-list" id="ingEditList"></div>
+        <div class="ing-edit-list" id="ingEditList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;"></div>
         <button type="button" class="btn-add-ing" onclick="addIngredientRow()">+ Add Ingredient</button>
       </div>
       
-      <button type="submit" class="btn-save">Save Changes</button>
+      <div style="display: flex; gap: 10px; margin-top: 8px;">
+        <button type="submit" class="btn-save" style="flex: 2;">Save Changes</button>
+        <button type="button" class="btn-delete-action" onclick="deleteRecipePrompt(document.getElementById('editId').value)" style="flex: 1; padding: 14px; border-radius: 14px; background: #dc2626; color: white; border: none; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; font-family: inherit;">
+          Delete
+        </button>
+      </div>
     </form>
   </div>
 </div>
 
+<!-- Confirm Delete Modal -->
+<div class="modal" id="confirmDeleteModal" onclick="closeModal('confirmDeleteModal')">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 340px; border-radius: 24px; padding: 24px; text-align: center; margin-bottom: auto; margin-top: auto;">
+    <div style="background: #fee2e2; color: #dc2626; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+      <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </div>
+    <h3 style="font-size: 18px; font-weight: 700; color: var(--neutral-black); margin-bottom: 8px; font-family: 'Outfit';">Delete Recipe?</h3>
+    <p style="font-size: 13px; color: var(--neutral-gray2); margin-bottom: 24px; line-height: 1.4;">Are you sure you want to delete <strong id="deleteRecipeName"></strong>? This action cannot be undone.</p>
+    <div style="display: flex; gap: 12px;">
+      <button type="button" onclick="closeModal('confirmDeleteModal')" style="flex: 1; padding: 12px; border-radius: 12px; border: 1px solid var(--primary-40); background: transparent; color: var(--neutral-gray1); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Cancel</button>
+      <button type="button" id="confirmDeleteBtn" style="flex: 1; padding: 12px; border-radius: 12px; border: none; background: #dc2626; color: white; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Ingredient Quantity Modal -->
+<div class="modal" id="editIngQtyModal" onclick="closeModal('editIngQtyModal')">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 340px; border-radius: 24px; padding: 24px; margin-bottom: auto; margin-top: auto;">
+    <div class="modal-header">
+      <div class="modal-title" id="editIngQtyTitle" style="font-family: 'Outfit';">Edit Quantity</div>
+      <button class="modal-close" onclick="closeModal('editIngQtyModal')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form id="editIngQtyForm" onsubmit="saveIngredientQty(event)" class="edit-form" style="margin-top: 12px;">
+      <input type="hidden" id="editIngQtyIndex">
+      <div class="form-group">
+        <label id="editIngQtyLabel">Ingredient</label>
+        <div style="font-size: 15px; font-weight: 700; color: #0a2533; margin-bottom: 8px; font-family: 'Outfit';" id="editIngQtyName"></div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 16px;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+          <label>Quantity</label>
+          <input type="number" step="any" id="editIngQtyNum" required style="width: 100%;">
+        </div>
+        <div class="form-group" style="flex: 1.2; margin-bottom: 0;">
+          <label>Unit</label>
+          <select id="editIngQtyUnit" style="width: 100%; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 13px;">
+            <option value="g">g</option>
+            <option value="tsp">tsp (5g)</option>
+            <option value="tbsp">tbsp (15g)</option>
+            <option value="cup">cup (240g)</option>
+            <option value="serving">serving</option>
+            <option value="unit">unit</option>
+            <option value="oz">oz</option>
+            <option value="ml">ml</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="btn-save">Save Quantity</button>
+    </form>
+</div>
+
+<!-- Instructions Modal -->
+<div class="modal" id="instructionsModal" onclick="closeModal('instructionsModal')">
+  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 400px; border-radius: 24px; padding: 24px; max-height: 80%; margin-top: auto; margin-bottom: auto;">
+    <div class="modal-header">
+      <div class="modal-title" style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; color: #0a2533;">Instructions</div>
+      <button class="modal-close" onclick="closeModal('instructionsModal')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="detailInstructionsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px; max-height: 60vh; overflow-y: auto; padding-right: 4px;"></div>
+  </div>
+</div>
+
+<!-- ==================== JAVASCRIPT APP LOGIC ==================== -->
 <script>
 let db = {};
-let activeTag = null;
+let activeCategory = 'all';
+let currentView = 'home';
 let html5QrCode = null;
 let recalcDebounce = null;
 let currentDetailsId = null;
@@ -1070,17 +289,10 @@ let currentRecipeIngredients = [];
 let currentRecipeMacros = {};
 let currentRecipeDetailedIngredients = [];
 
-// Helper to extract TikTok Video ID and return the Embed Player URL
-function getTikTokEmbedUrl(url) {
-  if (!url) return '';
-  const m = url.match(/\/video\/(\d+)/);
-  if (m && m[1]) {
-    return `https://www.tiktok.com/embed/v2/${m[1]}`;
-  }
-  return '';
-}
+// Favorites system based on localStorage
+let favorites = JSON.parse(localStorage.getItem('grams_favorites') || '[]');
 
-// Helper to estimate emoji based on ingredient name
+// Estimate emojis for ingredient presentation
 function getIngredientEmoji(name) {
   name = name.toLowerCase();
   if (name.includes('chicken') || name.includes('poultry')) return '🍗';
@@ -1102,24 +314,26 @@ function getIngredientEmoji(name) {
   if (name.includes('honey') || name.includes('sugar') || name.includes('sweetener')) return '🍯';
   if (name.includes('chocolate') || name.includes('cocoa')) return '🍫';
   if (name.includes('pepper') || name.includes('spice') || name.includes('salt')) return '🌶️';
-  return '🥗'; // default food emoji
+  return '🥗'; // default
 }
 
-// Extract creator handle from TikTok URL
+// Get TikTok embed URL
+function getTikTokEmbedUrl(url) {
+  if (!url) return '';
+  const m = url.match(/\/video\/(\d+)/);
+  return m && m[1] ? `https://www.tiktok.com/embed/v2/${m[1]}` : '';
+}
+
 function getCreatorHandle(url) {
   if (!url) return 'TikTok Creator';
   const m = url.match(/tiktok\.com\/@([^\/]+)/);
   return m && m[1] ? '@' + m[1] : 'TikTok Creator';
 }
 
-// Parsing steps from free-form description
+// Extract instructions steps
 function getSteps(desc) {
   if (!desc) return [];
-  
-  // Clean up "Instructions:" header if present
   let cleanDesc = desc.replace(/Instructions:?/i, '').trim();
-  
-  // Check if it has numbered list: e.g. 1. 2. or Step 1:
   const stepRegex = /(?:\r?\n|^|\s)(?:Step\s+)?(\d+)[.:\)-]\s*/gi;
   const parts = cleanDesc.split(stepRegex);
   
@@ -1135,7 +349,6 @@ function getSteps(desc) {
     if (steps.length > 0) return steps;
   }
   
-  // Fallback: split by newlines or sentences
   const sentences = cleanDesc.split(/\r?\n|(?<=[.!?])\s+/);
   return sentences
     .map(s => s.trim())
@@ -1143,6 +356,7 @@ function getSteps(desc) {
     .map((text, idx) => ({ num: idx + 1, text }));
 }
 
+// Database loader
 async function loadDB() {
   try {
     const r = await fetch('recipes_db.json');
@@ -1151,47 +365,32 @@ async function loadDB() {
     db = {};
   }
   render();
-  buildPills();
 }
 
-function buildPills() {
-  const tags = new Set();
-  Object.values(db).forEach(r => (r.tags||[]).forEach(t => tags.add(t)));
-  const row = document.getElementById('pillsRow');
-  row.innerHTML = '';
-  const all = document.createElement('button');
-  all.className = 'pill active';
-  all.textContent = 'All';
-  all.onclick = () => setTag(null, all);
-  row.appendChild(all);
-  [...tags].sort().forEach(t => {
-    const p = document.createElement('button');
-    p.className = 'pill';
-    p.textContent = t;
-    p.onclick = () => setTag(t, p);
-    row.appendChild(p);
-  });
-}
-
-function setTag(tag, el) {
-  activeTag = tag;
-  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+function setCategory(cat, el) {
+  activeCategory = cat;
+  document.querySelectorAll('.category-pill').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   render();
 }
 
+function focusSearch() {
+  switchView('home');
+  document.getElementById('searchInput').focus();
+}
+
 function getFiltered() {
   const q = document.getElementById('searchInput').value.toLowerCase().trim();
-  const minP = parseFloat(document.getElementById('minProtein').value) || 0;
-  const maxCal = parseFloat(document.getElementById('maxCalories').value) || Infinity;
-  const maxCarb = parseFloat(document.getElementById('maxCarbs').value) || Infinity;
-
   return Object.entries(db).filter(([id, r]) => {
-    if (activeTag && !(r.tags||[]).includes(activeTag)) return false;
-    const m = r.macros || {};
-    if (Math.round(m.protein||0) < minP) return false;
-    if (m.calories > 0 && Math.round(m.calories) > maxCal) return false;
-    if (m.carbs > 0 && Math.round(m.carbs) > maxCarb) return false;
+    // Category tags filtering
+    if (activeCategory !== 'all') {
+      const tags = (r.tags || []).map(t => t.toLowerCase());
+      const matchesTag = tags.includes(activeCategory);
+      const matchesName = (r.name || '').toLowerCase().includes(activeCategory);
+      if (!matchesTag && !matchesName) return false;
+    }
+    
+    // Search query filtering
     if (!q) return true;
     if (q.includes(',')) {
       const terms = q.split(',').map(t => t.trim()).filter(Boolean);
@@ -1199,65 +398,152 @@ function getFiltered() {
         (r.ingredients||[]).some(i => (i.name||'').toLowerCase().includes(term))
       );
     }
-    if ((r.name||'').toLowerCase().includes(q)) return true;
-    if ((r.description||'').toLowerCase().includes(q)) return true;
-    if ((r.ingredients||[]).some(i => (i.name||'').toLowerCase().includes(q))) return true;
-    if ((r.tags||[]).some(t => t.toLowerCase().includes(q))) return true;
-    return false;
+    return (
+      (r.name||'').toLowerCase().includes(q) ||
+      (r.description||'').toLowerCase().includes(q) ||
+      (r.ingredients||[]).some(i => (i.name||'').toLowerCase().includes(q)) ||
+      (r.tags||[]).some(t => t.toLowerCase().includes(q))
+    );
   });
 }
 
-function tagClass(t) {
-  return 'tag';
-}
-
-function hasMacros(m) { return m && (m.protein>0||m.carbs>0||m.fats>0||m.calories>0); }
-
+// Render dynamic homepage recipe lists
 function render() {
   const filtered = getFiltered();
-  const container = document.getElementById('cardsContainer');
-  document.getElementById('countBadge').textContent = filtered.length + ' recipe' + (filtered.length!==1?'s':'');
+  const popularContainer = document.getElementById('popularContainer');
+  const editorsChoiceContainer = document.getElementById('editorsChoiceContainer');
 
-  if (!filtered.length) {
-    container.innerHTML = `<div class="empty">
-      <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M15 11h.01M11 15h.01M11 11h.01M15 15h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-      <h3>No recipes found</h3>
-      <p>Try a different search or filter</p>
-    </div>`;
+  if (filtered.length === 0) {
+    popularContainer.innerHTML = `<div style="padding: 24px; color: #748189; font-size:14px;">No recipes match the criteria.</div>`;
+    editorsChoiceContainer.innerHTML = '';
     return;
   }
 
-  container.innerHTML = filtered.map(([id, r]) => {
-    const m = r.macros || {};
-    const hasMac = hasMacros(m);
-    const tags = (r.tags||[]).map(t => `<span class="${tagClass(t)}">${t}</span>`).join('');
-    const macrosHtml = hasMac ? `
-      <div class="macros">
-        <div class="macro"><div class="macro-val">${Math.round(m.protein||0)}g</div><div class="macro-lbl">Protein</div></div>
-        <div class="macro"><div class="macro-val">${Math.round(m.carbs||0)}g</div><div class="macro-lbl">Carbs</div></div>
-        <div class="macro"><div class="macro-val">${Math.round(m.fats||0)}g</div><div class="macro-lbl">Fats</div></div>
-        <div class="macro calories"><div class="macro-val">${Math.round(m.calories||0)}</div><div class="macro-lbl">Kcal</div></div>
-      </div>` : `<div style="padding:10px 18px"><span class="missing-badge">⚠ Macros missing</span></div>`;
+  // Populate Popular Recipes (horizontal scroll)
+  // Display top 4 matching recipes in horizontal view
+  popularContainer.innerHTML = filtered.slice(0, 5).map(([id, r]) => {
+    return `
+      <div class="v701_928" onclick="openRecipeDetails('${id}')">
+        <div class="v701_929"></div>
+        <span class="v701_930">${r.name || 'Untitled'}</span>
+        <div class="v701_931" style="background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; border-radius: 16px;"></div>
+      </div>
+    `;
+  }).join('');
 
-    return `<div class="card" id="card-${id}" onclick="openDetails('${id}')">
-      <div class="card-header">
-        <div class="card-icon">
-          <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2a9 9 0 0 1 9 9c0 4.97-4.03 9-9 9S3 15.97 3 11a9 9 0 0 1 9-9z"/><path d="M12 6v6l4 2"/></svg>
-        </div>
-        <div class="card-info">
-          <div class="card-title">${r.name||'Untitled'}</div>
-          ${tags ? `<div class="card-tags">${tags}</div>` : ''}
+  // Populate Editor's Choice list (vertical scroll)
+  editorsChoiceContainer.innerHTML = filtered.map(([id, r]) => {
+    return `
+      <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; margin-bottom: 8px; border: 1px solid var(--primary-40);">
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="flex: 1; min-width: 0;">
+          <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
+          <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>
         </div>
       </div>
-      ${macrosHtml}
-      <div class="card-actions" onclick="event.stopPropagation()">
-        <button class="btn-details" onclick="openDetails('${id}')" style="width: 100%;">
-          <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Watch Video & Details
+    `;
+  }).join('');
+}
+
+// Switch SPA views
+function switchView(viewName) {
+  // Stop any playing video when switching views
+  const playerEl = document.getElementById('headerVideoPlayer');
+  if (playerEl) {
+    playerEl.innerHTML = '';
+    playerEl.style.display = 'none';
+  }
+  const overlayEl = document.getElementById('detailImageOverlay');
+  if (overlayEl) {
+    overlayEl.style.display = 'block';
+  }
+  const playBtnEl = document.getElementById('videoPlayBtn');
+  if (playBtnEl) {
+    playBtnEl.style.display = 'flex';
+  }
+
+  currentView = viewName;
+  document.querySelectorAll('.app-view').forEach(v => v.style.display = 'none');
+  
+  // Update active navigation tabs
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  
+  if (viewName === 'home') {
+    document.getElementById('view-home').style.display = 'block';
+    document.getElementById('nav-home').classList.add('active');
+    render();
+  } else if (viewName === 'account') {
+    document.getElementById('view-account').style.display = 'block';
+    document.getElementById('nav-account').classList.add('active');
+    renderFavorites();
+  } else if (viewName === 'detail') {
+    document.getElementById('view-detail').style.display = 'block';
+  } else if (viewName === 'search') {
+    document.getElementById('view-search').style.display = 'block';
+    document.getElementById('nav-search').classList.add('active');
+    renderSearchTags();
+    runSearchFilter();
+  }
+}
+
+// Favorite list presentation
+function renderFavorites() {
+  const container = document.getElementById('favoritesContainer');
+  const favRecipes = Object.entries(db).filter(([id, r]) => favorites.includes(id));
+  
+  if (favRecipes.length === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 40px 20px; color: #748189;">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom: 8px; opacity: 0.5;"><path d="M4.318 6.318a4.5 4.5 0 0 0 0 6.364L12 20.364l7.682-7.682a4.5 4.5 0 0 0-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 0 0-6.364 0z"/></svg>
+        <p style="font-size: 14px; font-weight: 600; font-family: 'Outfit';">No favorites saved yet</p>
+        <p style="font-size: 12px; margin-top: 4px;">Click the heart icon on recipe details to save them here.</p>
+      </div>
+    `;
+    return;
+  }
+  
+  container.innerHTML = favRecipes.map(([id, r]) => {
+    return `
+      <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; margin-bottom: 8px; border: 1px solid var(--primary-40);">
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="flex: 1; min-width: 0;">
+          <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
+          <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>
+        </div>
+        <button class="favorite-btn" data-id="${id}" onclick="toggleFavorite('${id}', event)" style="background: none; border: none; cursor: pointer; color: #748189; padding: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
         </button>
       </div>
-    </div>`;
+    `;
   }).join('');
+  updateFavoriteIcons();
+}
+
+function toggleFavorite(id, event) {
+  if (event) event.stopPropagation();
+  const idx = favorites.indexOf(id);
+  if (idx > -1) {
+    favorites.splice(idx, 1);
+  } else {
+    favorites.push(id);
+  }
+  localStorage.setItem('grams_favorites', JSON.stringify(favorites));
+  updateFavoriteIcons();
+  if (currentView === 'account') {
+    renderFavorites();
+  }
+}
+
+function updateFavoriteIcons() {
+  document.querySelectorAll('.favorite-btn').forEach(btn => {
+    const id = btn.getAttribute('data-id');
+    if (favorites.includes(id)) {
+      btn.innerHTML = `<svg width="20" height="20" fill="#e11d48" stroke="#e11d48" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+    } else {
+      btn.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 0 0 0 6.364L12 20.364l7.682-7.682a4.5 4.5 0 0 0-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 0 0-6.364 0z"/></svg>`;
+    }
+  });
 }
 
 function formatMultipliedQty(qtyStr, mult) {
@@ -1272,8 +558,8 @@ function formatMultipliedQty(qtyStr, mult) {
   return qtyStr;
 }
 
+// Portions multiplier calculations
 function setPortionMultiplier(mult) {
-  // Update active button styling
   document.querySelectorAll('.multiplier-group .btn-mult').forEach(btn => {
     if (parseFloat(btn.getAttribute('data-val')) === mult) {
       btn.classList.add('active');
@@ -1286,27 +572,34 @@ function setPortionMultiplier(mult) {
     }
   });
 
-  // 1. Scale and render ingredient quantities
-  const ingList = document.getElementById('detailsIngList');
+  // Scale recipe macros and grams in UI
+  const detailsIngList = document.getElementById('detailIngList');
   if (currentRecipeIngredients.length > 0) {
-    ingList.innerHTML = currentRecipeIngredients.map((i, idx) => {
+    detailsIngList.innerHTML = currentRecipeIngredients.map((i, idx) => {
       const scaledQty = formatMultipliedQty(i.quantity, mult);
       return `
-        <div class="figma-ingredient-card" id="details-ing-${idx}">
-          <div class="figma-ingredient-icon">${getIngredientEmoji(i.name)}</div>
-          <div style="flex: 1;">
-            <div class="figma-ingredient-name" style="font-weight: 600;">${i.name}</div>
-            <div class="figma-ingredient-macros" style="font-size: 11px; color: var(--neutral-gray2); margin-top: 2px;">Loading macros...</div>
+        <div class="swipe-container" style="position: relative; overflow: hidden; border-radius: 16px; margin-bottom: 8px;">
+          <div class="swipe-action-reveal" style="position: absolute; right: 0; top: 0; bottom: 0; width: 80px; display: flex; z-index: 1;">
+            <button class="swipe-action-btn" onclick="openEditIngQty(${idx})">
+              Edit Qty
+            </button>
           </div>
-          <div class="figma-ingredient-qty" style="align-self: flex-start;">${scaledQty}</div>
+          <div class="figma-ingredient-card swipeable-content" id="details-ing-${idx}" style="position: relative; z-index: 2; margin-bottom: 0; background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 16px; padding: 14px; display: flex; align-items: center; transition: transform 0.2s ease-out; width: 100%;">
+            <div class="figma-ingredient-icon" style="font-size: 22px; margin-right: 14px; flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; background: white; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.05);">${getIngredientEmoji(i.name)}</div>
+            <div style="flex: 1; min-width: 0; text-align: left;">
+              <div class="figma-ingredient-name" style="font-weight: 700; font-size: 16px; color: #0a2533; font-family: 'Outfit'; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${i.name}</div>
+              <div class="figma-ingredient-macros" style="font-size: 11px; color: var(--neutral-gray2); margin-top: 3px;">Loading macros...</div>
+            </div>
+            <div class="figma-ingredient-qty" style="align-self: center; text-align: right; font-weight: 700; font-size: 16px; color: #0a2533; font-family: 'Outfit'; white-space: nowrap; padding-left: 8px; flex-shrink: 0;">
+              ${scaledQty}<span class="figma-ingredient-grams" style="font-size: 11px; color: var(--primary-100); font-weight: 600; margin-left: 4px;"></span>
+            </div>
+          </div>
         </div>
       `;
     }).join('');
-  } else {
-    ingList.innerHTML = `<div style="color:var(--neutral-gray3); font-size:13px; text-align:center; padding:12px;">No ingredients listed</div>`;
   }
 
-  // 2. Render individual ingredient macros scaled
+  // Load detailed ingredient macro breakdowns
   if (currentRecipeDetailedIngredients.length > 0) {
     currentRecipeDetailedIngredients.forEach((ingData, idx) => {
       const el = document.getElementById(`details-ing-${idx}`);
@@ -1319,147 +612,271 @@ function setPortionMultiplier(mult) {
           const cal = Math.round(ingData.calories * mult);
           macrosEl.innerHTML = `P: ${p}g | C: ${c}g | F: ${f}g | ${cal} kcal`;
         }
+
+        const gramsEl = el.querySelector('.figma-ingredient-grams');
+        if (gramsEl && ingData.grams) {
+          const qtyLower = (ingData.quantity || '').toLowerCase();
+          const needsGrams = qtyLower.includes('tbsp') || qtyLower.includes('tbs') || qtyLower.includes('tsp') || qtyLower.includes('cup');
+          if (needsGrams) {
+            const scaledGrams = Math.round(ingData.grams * mult);
+            gramsEl.textContent = `(${scaledGrams}g)`;
+          } else {
+            gramsEl.textContent = '';
+          }
+        }
       }
     });
   }
 
-  // 3. Render total recipe macros scaled
-  const macrosPanel = document.getElementById('detailsMacrosPanel');
+  // Scale Total Recipe Macros
   const m = currentRecipeMacros;
-  if (hasMacros(m)) {
-    macrosPanel.innerHTML = `
-      <div class="macros-grid">
-        <div class="macro-box">
-          <div class="macro-box-val">${Math.round((m.protein||0) * mult)}g</div>
-          <div class="macro-box-lbl">Protein</div>
-        </div>
-        <div class="macro-box">
-          <div class="macro-box-val">${Math.round((m.carbs||0) * mult)}g</div>
-          <div class="macro-box-lbl">Carbs</div>
-        </div>
-        <div class="macro-box">
-          <div class="macro-box-val">${Math.round((m.fats||0) * mult)}g</div>
-          <div class="macro-box-lbl">Fats</div>
-        </div>
-        <div class="macro-box calories">
-          <div class="macro-box-val">${Math.round((m.calories||0) * mult)}</div>
-          <div class="macro-box-lbl">Calories</div>
-        </div>
-      </div>
-    `;
-  } else {
-    macrosPanel.innerHTML = `<span class="missing-badge" style="width:100%; text-align:center;">⚠ Nutritional macros missing for this recipe</span>`;
-  }
+  document.getElementById('detailMacrosProtein').textContent = `${Math.round((m.protein || 0) * mult)}g`;
+  document.getElementById('detailMacrosCarbs').textContent = `${Math.round((m.carbs || 0) * mult)}g`;
+  document.getElementById('detailMacrosFats').textContent = `${Math.round((m.fats || 0) * mult)}g`;
+  document.getElementById('detailMacrosCals').textContent = `${Math.round((m.calories || 0) * mult)}`;
+
+  // Attach swipe gesture listeners to ingredients
+  document.querySelectorAll('.swipeable-content').forEach(el => {
+    makeSwipeable(el);
+  });
 }
 
-function openDetails(id) {
-  currentDetailsId = id;
-  const r = db[id];
-  document.getElementById('detailsModalTitle').textContent = r.name || 'Recipe Details';
+// Swipe Gesture Handler
+function makeSwipeable(element) {
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let isDragging = false;
+  let isScroll = false;
+  const maxSlide = -80;
   
-  // Set creator info
-  const handle = getCreatorHandle(r.url);
-  document.getElementById('detailsCreatorName').textContent = handle;
-  document.getElementById('detailsCreatorAvatar').textContent = handle.charAt(1).toUpperCase() || '🧑';
-  
-  // Detect servings from description if possible, otherwise show default "2 serves"
-  const servingRegex = /(?:serves|servings|makes|portions)\s*(\d+)/i;
-  const match = (r.description || '').match(servingRegex);
-  const servesText = match && match[1] ? `${match[1]} serves` : '2 serves';
-  document.getElementById('detailsServings').textContent = servesText;
-  
-  // Embed TikTok Iframe
-  const embedUrl = getTikTokEmbedUrl(r.url);
-  const videoContainer = document.getElementById('detailsVideoContainer');
-  if (embedUrl) {
-    videoContainer.innerHTML = `<iframe class="video-iframe" src="${embedUrl}" allowfullscreen></iframe>`;
-  } else {
-    // Fallback if no valid TikTok video link exists
-    videoContainer.innerHTML = `<div style="width:100%; height:220px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--neutral-gray2); background:#111;">
-      <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin-bottom:8px;"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2 2V7a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1m4-4h-4v12h4a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>
-      <span>No video link available</span>
-    </div>`;
+  function handleStart(clientX, clientY) {
+    document.querySelectorAll('.swipeable-content').forEach(el => {
+      if (el !== element) {
+        el.style.transform = 'translateX(0px)';
+      }
+    });
+    startX = clientX;
+    startY = clientY;
+    isDragging = true;
+    isScroll = false;
+    element.style.transition = 'none';
   }
   
-  // Store ingredients and macros in state
+  function handleMove(clientX, clientY, e) {
+    if (!isDragging) return;
+    const diffX = clientX - startX;
+    const diffY = clientY - startY;
+    
+    if (!isScroll) {
+      if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > 5) {
+        isScroll = true;
+        isDragging = false;
+        element.style.transition = 'transform 0.2s ease-out';
+        element.style.transform = 'translateX(0px)';
+        return;
+      }
+    }
+    
+    if (isScroll) return;
+    
+    if (Math.abs(diffX) > 5) {
+      if (e.cancelable) e.preventDefault();
+    }
+    
+    if (diffX < 0) {
+      currentX = Math.max(diffX, maxSlide);
+    } else {
+      currentX = Math.min(diffX, 0);
+    }
+    element.style.transform = `translateX(${currentX}px)`;
+  }
+  
+  function handleEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    element.style.transition = 'transform 0.2s ease-out';
+    if (currentX < maxSlide / 2) {
+      currentX = maxSlide;
+      element.style.transform = `translateX(${maxSlide}px)`;
+    } else {
+      currentX = 0;
+      element.style.transform = 'translateX(0px)';
+    }
+  }
+
+  element.addEventListener('touchstart', e => {
+    handleStart(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+  
+  element.addEventListener('touchmove', e => {
+    handleMove(e.touches[0].clientX, e.touches[0].clientY, e);
+  }, { passive: false });
+  
+  element.addEventListener('touchend', () => {
+    handleEnd();
+  }, { passive: true });
+
+  element.addEventListener('mousedown', e => {
+    handleStart(e.clientX, e.clientY);
+    
+    const onMouseMove = ev => {
+      handleMove(ev.clientX, ev.clientY, ev);
+    };
+    
+    const onMouseUp = () => {
+      handleEnd();
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  });
+}
+
+// Open Details View
+function openRecipeDetails(id) {
+  currentDetailsId = id;
+  const r = db[id];
+  if (!r) return;
+
+  document.getElementById('detailTitle').textContent = r.name || 'Recipe Details';
+  
+  // Set cook time
+  const timeMatch = (r.description || '').match(/(\d+)\s*(?:min|minute|hour)/i);
+  const timeText = timeMatch ? `${timeMatch[1]} Min` : '15 Min';
+  document.getElementById('detailTime').textContent = timeText;
+
+  // Set creator info
+  const handle = getCreatorHandle(r.url);
+  document.getElementById('detailCreatorName').textContent = handle;
+  document.getElementById('detailCreatorAvatar').textContent = handle.charAt(1).toUpperCase() || 'N';
+  
+  // Heart/Favorite icon state setup
+  const favBtn = document.getElementById('detailFavoriteBtn');
+  favBtn.setAttribute('data-id', id);
+  favBtn.onclick = (e) => toggleFavorite(id, e);
+  updateFavoriteIcons();
+
+  // Load ingredients & initial portions
   currentRecipeIngredients = r.ingredients || [];
   currentRecipeMacros = r.macros || {};
   currentRecipeDetailedIngredients = [];
 
   const ingCount = currentRecipeIngredients.length;
-  document.getElementById('detailsIngCount').textContent = `${ingCount} item${ingCount !== 1 ? 's' : ''}`;
+  document.getElementById('detailIngCount').textContent = `${ingCount} item${ingCount !== 1 ? 's' : ''}`;
   
-  // Set portion multiplier to 1 initially
+  // Render portion multipliers initially (starts at 1.0)
   setPortionMultiplier(1.0);
 
   if (ingCount > 0) {
-    // Fetch details macros breakdown from the backend
     fetch('/api/recipes/calculate_macros', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ingredients: currentRecipeIngredients })
-     })
+    })
       .then(res => res.json())
       .then(data => {
         if (data.ingredients) {
           currentRecipeDetailedIngredients = data.ingredients;
           
-          // Re-render based on active portion multiplier select
           const activeBtn = document.querySelector('.multiplier-group .btn-mult.active');
           const currentMult = activeBtn ? parseFloat(activeBtn.getAttribute('data-val')) : 1.0;
           setPortionMultiplier(currentMult);
         }
       })
-      .catch(err => {
-        console.error("Error fetching ingredient breakdown:", err);
-      });
+      .catch(err => console.error("Error loading ingredient breakdowns:", err));
   }
-  
-  // Instructions steps from figma-to-html(1)
-  const stepsList = document.getElementById('detailsInstructionsList');
+
+  // Load instructions steps
+  const stepsList = document.getElementById('detailInstructionsList');
   const steps = getSteps(r.description);
   if (steps.length > 0) {
     stepsList.innerHTML = steps.map(s => `
-      <div class="figma-step-card">
-        <div class="figma-step-title">Step ${s.num}</div>
-        <div class="figma-step-desc">${s.text}</div>
+      <div style="background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 14px; padding: 16px; text-align: left;">
+        <span style="display: block; font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px;">Step ${s.num}</span>
+        <span style="font-size: 14px; color: #0a2533; line-height: 1.45;">${s.text}</span>
       </div>
     `).join('');
   } else {
     stepsList.innerHTML = `<div style="color:var(--neutral-gray3); font-size:13px; text-align:center; padding:12px;">No instructions provided</div>`;
   }
+
+  // Embedded video / image setup inside the top header detailImage
+  const videoContainer = document.getElementById('detailImage');
+  const overlayEl = document.getElementById('detailImageOverlay');
+  const playBtnEl = document.getElementById('videoPlayBtn');
+  const playerEl = document.getElementById('headerVideoPlayer');
+  const scrollContainer = document.querySelector('.v701_953');
   
-  document.getElementById('detailsModal').classList.add('open');
+  // Reset standard positioning
+  scrollContainer.style.top = '290px';
+  scrollContainer.style.paddingTop = '0px';
+  videoContainer.style.display = 'block';
+  videoContainer.style.backgroundImage = 'none';
+  videoContainer.onclick = null;
+
+  const embedUrl = getTikTokEmbedUrl(r.url);
+  if (embedUrl) {
+    // Play video directly as the image/header background (embed it immediately)
+    playBtnEl.style.display = 'none';
+    overlayEl.style.display = 'none';
+    playerEl.style.display = 'block';
+    playerEl.innerHTML = `<iframe class="video-iframe" src="${embedUrl}" allowfullscreen scrolling="no" style="width:100%; height:100%; border:none; overflow:hidden;"></iframe>`;
+  } else {
+    playBtnEl.style.display = 'none';
+    playerEl.style.display = 'none';
+    playerEl.innerHTML = '';
+    
+    if (r.image) {
+      // Show custom recipe image
+      overlayEl.style.display = 'block';
+      videoContainer.style.backgroundImage = `url('${r.image}')`;
+    } else {
+      // No video and no image: hide header completely, slide scroll container to top with padding for back/fav buttons
+      videoContainer.style.display = 'none';
+      scrollContainer.style.top = '0px';
+      scrollContainer.style.paddingTop = '100px';
+    }
+  }
+
+  switchView('detail');
+  // Scroll to details box top
+  document.getElementById('view-detail').scrollTop = 0;
 }
 
+function goBack() {
+  switchView('home');
+}
+
+// Open Edit Modal
 function openEdit(id) {
   const r = db[id];
-  const m = r.macros||{};
-  document.getElementById('editId').value = id;
-  document.getElementById('editName').value = r.name||'';
-  document.getElementById('editProtein').value = Math.round(m.protein||0);
-  document.getElementById('editCarbs').value = Math.round(m.carbs||0);
-  document.getElementById('editFats').value = Math.round(m.fats||0);
-  document.getElementById('editCalories').value = Math.round(m.calories||0);
-  document.getElementById('editTags').value = (r.tags||[]).join(', ');
+  if (!r) return;
+  const m = r.macros || {};
   
-  // Close any open barcode scanners
+  document.getElementById('editId').value = id;
+  document.getElementById('editName').value = r.name || '';
+  document.getElementById('editProtein').value = Math.round(m.protein || 0);
+  document.getElementById('editCarbs').value = Math.round(m.carbs || 0);
+  document.getElementById('editFats').value = Math.round(m.fats || 0);
+  document.getElementById('editCalories').value = Math.round(m.calories || 0);
+  document.getElementById('editTags').value = (r.tags || []).join(', ');
+  
+  // Reset scanner
   document.getElementById('barcodeSection').style.display = 'none';
   stopCameraScan();
   
   const list = document.getElementById('ingEditList');
   list.innerHTML = '';
-  (r.ingredients||[]).forEach(i => addIngredientRow(i.name, i.quantity));
+  (r.ingredients || []).forEach(i => addIngredientRow(i.name, i.quantity));
   
   document.getElementById('editModal').classList.add('open');
-  
-  // Run initial macro calculation
   triggerMacroRecalculation();
 }
 
-// Helper to parse quantity string (e.g., "3 tsp" or "100g") into numeric qty and unit
+// Parsing quantity units
 function parseQtyString(qtyStr) {
   if (!qtyStr) return { num: 1, unit: 'g' };
   const match = qtyStr.match(/^\s*(\d+(?:\.\d+)?)\s*([a-zA-Z\s\.]+)?$/);
@@ -1480,41 +897,26 @@ function parseQtyString(qtyStr) {
   return { num: parseFloat(qtyStr) || 1, unit: 'g' };
 }
 
-// Helper to formulate display label for the serving option
-function getServingText(servingJson) {
-  if (!servingJson) return 'serving (100g)';
-  try {
-    const data = typeof servingJson === 'string' ? JSON.parse(servingJson) : servingJson;
-    const common = data.common || {};
-    const metric = data.metric || {};
-    const commonText = common.unit ? `${common.quantity} ${common.unit}` : '';
-    const metricText = metric.unit ? `${metric.quantity}${metric.unit}` : '';
-    if (commonText && metricText) return `serving (${commonText} / ${metricText})`;
-    if (metricText) return `serving (${metricText})`;
-    if (commonText) return `serving (${commonText})`;
-  } catch(e) {}
-  return 'serving (100g)';
-}
-
+// Add row to ingredient edit modal list
 function addIngredientRow(name='', qtyStr='') {
   const parsed = parseQtyString(qtyStr);
   const list = document.getElementById('ingEditList');
   const row = document.createElement('div');
   row.className = 'ing-edit-row-container';
-  row.style = 'display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--primary-20); padding-bottom: 8px; margin-bottom: 8px;';
+  row.style = 'display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--primary-40); padding-bottom: 8px; margin-bottom: 8px;';
   
   row.innerHTML = `
     <div class="ing-edit-row" style="display: flex; gap: 8px; align-items: center;">
-      <div class="autocomplete-container" style="flex: 1;">
+      <div class="autocomplete-container" style="flex: 1; position: relative;">
         <input type="text" class="ing-name-input" placeholder="Ingredient name" value="${name.replace(/"/g,'&quot;')}" autocomplete="off" required style="width: 100%;">
-        <div class="autocomplete-dropdown" style="display: none;"></div>
+        <div class="autocomplete-dropdown" style="display: none; position: absolute; top:100%; left:0; right:0; background:white; z-index:1000; max-height:160px; overflow-y:auto; border: 1px solid var(--primary-40); border-radius:12px;"></div>
       </div>
-      <input type="number" step="any" class="ing-qty-num" placeholder="Qty" value="${parsed.num}" style="width: 75px; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 14px;" required>
-      <select class="ing-qty-unit" style="width: 105px; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 13px;">
+      <input type="number" step="any" class="ing-qty-num" placeholder="Qty" value="${parsed.num}" style="width: 65px; padding: 12px 6px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 14px;" required>
+      <select class="ing-qty-unit" style="width: 100px; padding: 12px 6px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 13px;">
         <option value="g" ${parsed.unit === 'g' ? 'selected' : ''}>g</option>
-        <option value="tsp" ${parsed.unit === 'tsp' ? 'selected' : ''}>tsp</option>
-        <option value="tbsp" ${parsed.unit === 'tbsp' ? 'selected' : ''}>tbsp</option>
-        <option value="cup" ${parsed.unit === 'cup' ? 'selected' : ''}>cup</option>
+        <option value="tsp" ${parsed.unit === 'tsp' ? 'selected' : ''}>tsp (5g)</option>
+        <option value="tbsp" ${parsed.unit === 'tbsp' ? 'selected' : ''}>tbsp (15g)</option>
+        <option value="cup" ${parsed.unit === 'cup' ? 'selected' : ''}>cup (240g)</option>
         <option value="serving" ${parsed.unit === 'serving' ? 'selected' : ''}>serving</option>
         <option value="unit" ${parsed.unit === 'unit' ? 'selected' : ''}>unit</option>
         <option value="oz" ${parsed.unit === 'oz' ? 'selected' : ''}>oz</option>
@@ -1524,7 +926,7 @@ function addIngredientRow(name='', qtyStr='') {
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
     </div>
-    <div class="ing-row-macros" style="font-size: 11px; color: var(--primary-100); padding-left: 4px; font-weight: 500;"></div>
+    <div class="ing-row-macros" style="font-size: 11px; color: var(--primary-100); padding-left: 4px; font-weight: 600;"></div>
   `;
   
   list.appendChild(row);
@@ -1573,11 +975,10 @@ function addIngredientRow(name='', qtyStr='') {
         .then(data => {
           if (data.results && data.results.length > 0) {
             dropdown.innerHTML = data.results.map(item => {
-              const servingText = getServingText(item.serving);
               return `
-                <div class="autocomplete-item" data-name="${item.name.replace(/"/g,'&quot;')}" data-serving="${(item.serving || '').replace(/"/g,'&quot;')}">
-                  <span class="autocomplete-item-name">${item.name}</span>
-                  <span class="autocomplete-item-macros">P:${item.protein.toFixed(0)}g Cal:${item.calories}</span>
+                <div class="autocomplete-item" data-name="${item.name.replace(/"/g,'&quot;')}" data-serving="${(item.serving || '').replace(/"/g,'&quot;')}" style="padding:10px; cursor:pointer; font-size:12px; border-bottom: 1px solid var(--primary-40); display:flex; justify-content:space-between;">
+                  <span style="font-weight:600; color:#0a2533;">${item.name}</span>
+                  <span style="color:var(--neutral-gray2);">P:${item.protein.toFixed(0)}g Cal:${item.calories}</span>
                 </div>
               `;
             }).join('');
@@ -1612,10 +1013,11 @@ function addIngredientRow(name='', qtyStr='') {
       dropdown.style.display = 'none';
     }
   });
-
+  
   triggerMacroRecalculation();
 }
 
+// Recalculate macros for edit form
 function triggerMacroRecalculation() {
   clearTimeout(recalcDebounce);
   recalcDebounce = setTimeout(() => {
@@ -1641,9 +1043,7 @@ function triggerMacroRecalculation() {
     
     fetch('/api/recipes/calculate_macros', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ingredients })
     })
       .then(res => res.json())
@@ -1667,150 +1067,79 @@ function triggerMacroRecalculation() {
           }
         }
       })
-      .catch(err => {
-        console.error("Macro recalculation error:", err);
-      });
+      .catch(err => console.error("Macro recalculation error:", err));
   }, 300);
 }
 
-// Open Food Facts Barcode scanner and search handlers
-function toggleBarcodeScanner() {
-  const sec = document.getElementById('barcodeSection');
-  if (sec.style.display === 'none') {
-    sec.style.display = 'block';
+// Open edit ingredient quantity modal (Swipe reveals this)
+function openEditIngQty(idx) {
+  const ing = currentRecipeIngredients[idx];
+  if (!ing) return;
+  
+  document.getElementById('editIngQtyIndex').value = idx;
+  document.getElementById('editIngQtyName').textContent = ing.name;
+  
+  const parsed = parseQtyString(ing.quantity);
+  document.getElementById('editIngQtyNum').value = parsed.num;
+  
+  const unitSelect = document.getElementById('editIngQtyUnit');
+  const servingOpt = unitSelect.querySelector('option[value="serving"]');
+  
+  const detailedIng = currentRecipeDetailedIngredients[idx];
+  if (detailedIng && detailedIng.serving) {
+    servingOpt.textContent = getServingText(detailedIng.serving);
   } else {
-    stopCameraScan();
-    sec.style.display = 'none';
+    servingOpt.textContent = 'serving (100g)';
   }
+  
+  unitSelect.value = parsed.unit;
+  document.getElementById('editIngQtyModal').classList.add('open');
 }
 
-function startCameraScan() {
-  const container = document.getElementById('barcodeReaderContainer');
-  const btn = document.getElementById('toggleCameraBtn');
-  const status = document.getElementById('barcodeStatus');
+// Save single ingredient quantity from swipe modal
+async function saveIngredientQty(e) {
+  e.preventDefault();
+  const idx = parseInt(document.getElementById('editIngQtyIndex').value);
+  const num = document.getElementById('editIngQtyNum').value.trim();
+  const unit = document.getElementById('editIngQtyUnit').value;
   
-  if (html5QrCode) {
-    stopCameraScan();
-    return;
-  }
+  const r = db[currentDetailsId];
+  if (!r || isNaN(idx) || !r.ingredients[idx]) return;
   
-  container.style.display = 'block';
-  btn.innerHTML = `
-    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path d="M18 6 6 18M6 6l12 12"/>
-    </svg>
-    Stop Scanner
-  `;
-  status.textContent = 'Initializing camera...';
+  const quantity = `${num} ${unit === 'serving' ? 'servings' : (unit === 'unit' ? 'units' : unit)}`;
+  r.ingredients[idx].quantity = quantity.trim();
   
-  html5QrCode = new Html5Qrcode("barcodeReader");
-  html5QrCode.start(
-    { facingMode: "environment" },
-    {
-      fps: 10,
-      qrbox: { width: 250, height: 120 }
-    },
-    barcodeText => {
-      document.getElementById('barcodeInput').value = barcodeText;
-      status.textContent = `Scanned barcode: ${barcodeText}`;
-      stopCameraScan();
-    },
-    errorMessage => {
-      // scan errors happen continuously when no code is found, ignore them
+  const updatedRecipe = {
+    id: currentDetailsId,
+    name: r.name,
+    tags: r.tags,
+    ingredients: r.ingredients,
+    description: r.description,
+    url: r.url
+  };
+  
+  try {
+    const res = await fetch('/api/recipes/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedRecipe)
+    });
+    const result = await res.json();
+    if (result.success) {
+      db[currentDetailsId] = result.recipe;
+      closeModal('editIngQtyModal');
+      openRecipeDetails(currentDetailsId);
+      render();
+    } else {
+      alert("Error saving quantity: " + (result.error || "Unknown error"));
     }
-  ).then(() => {
-    status.textContent = 'Camera active. Point at barcode.';
-  }).catch(err => {
-    console.error("Camera start failed:", err);
-    status.textContent = 'Failed to access camera.';
-    container.style.display = 'none';
-    html5QrCode = null;
-    btn.innerHTML = `
-      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-        <circle cx="12" cy="13" r="4"/>
-      </svg>
-      Scan Barcode
-    `;
-  });
-}
-
-function stopCameraScan() {
-  const container = document.getElementById('barcodeReaderContainer');
-  const btn = document.getElementById('toggleCameraBtn');
-  const status = document.getElementById('barcodeStatus');
-  
-  if (html5QrCode) {
-    html5QrCode.stop().then(() => {
-      html5QrCode = null;
-      container.style.display = 'none';
-      btn.innerHTML = `
-        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-          <circle cx="12" cy="13" r="4"/>
-        </svg>
-        Scan Barcode
-      `;
-    }).catch(err => {
-      console.error("Camera stop failed:", err);
-      html5QrCode = null;
-      container.style.display = 'none';
-      btn.innerHTML = `
-        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-          <circle cx="12" cy="13" r="4"/>
-        </svg>
-        Scan Barcode
-      `;
-    });
-  } else {
-    container.style.display = 'none';
-    btn.innerHTML = `
-      <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-        <circle cx="12" cy="13" r="4"/>
-      </svg>
-      Scan Barcode
-    `;
+  } catch(err) {
+    console.error("Save ingredient quantity error:", err);
+    alert("Failed to save changes. Please check server connection.");
   }
 }
 
-function searchBarcode() {
-  const input = document.getElementById('barcodeInput');
-  const val = input.value.trim();
-  if (!val) return;
-  
-  const status = document.getElementById('barcodeStatus');
-  status.textContent = 'Searching Open Food Facts...';
-  lookupBarcode(val);
-}
-
-function lookupBarcode(barcode) {
-  const status = document.getElementById('barcodeStatus');
-  fetch(`/api/barcode/lookup?barcode=${encodeURIComponent(barcode)}`)
-    .then(res => res.json())
-    .then(data => {
-      if (data.success) {
-        status.textContent = `Found: ${data.name}!`;
-        // Add to ingredients list
-        addIngredientRow(data.name, '100g');
-        // Clear input
-        document.getElementById('barcodeInput').value = '';
-        // Close scanner after a small delay
-        setTimeout(() => {
-          document.getElementById('barcodeSection').style.display = 'none';
-          status.textContent = '';
-        }, 1500);
-      } else {
-        status.textContent = 'Product not found in Open Food Facts.';
-      }
-    })
-    .catch(err => {
-      console.error("Barcode lookup failed:", err);
-      status.textContent = 'Error looking up barcode.';
-    });
-}
-
+// Save entire recipe edit
 async function saveEdit(e) {
   e.preventDefault();
   const id = document.getElementById('editId').value;
@@ -1836,17 +1165,18 @@ async function saveEdit(e) {
   try {
     const res = await fetch('/api/recipes/update', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updatedRecipe)
     });
     const result = await res.json();
     if (result.success) {
       db[id] = result.recipe;
       closeModal('editModal');
-      render();
-      buildPills();
+      if (currentView === 'detail' && currentDetailsId === id) {
+        openRecipeDetails(id);
+      } else {
+        render();
+      }
     } else {
       alert("Error saving changes: " + (result.error || "Unknown error"));
     }
@@ -1856,34 +1186,381 @@ async function saveEdit(e) {
   }
 }
 
+// Recipe Deletion Confirm & Execute
+let pendingDeleteId = null;
+
+function deleteRecipePrompt(id) {
+  if (!id) return;
+  const r = db[id];
+  if (!r) return;
+  
+  pendingDeleteId = id;
+  document.getElementById('deleteRecipeName').textContent = r.name;
+  document.getElementById('confirmDeleteBtn').onclick = executeDeleteRecipe;
+  document.getElementById('confirmDeleteModal').classList.add('open');
+}
+
+async function executeDeleteRecipe() {
+  if (!pendingDeleteId) return;
+  const id = pendingDeleteId;
+  try {
+    const res = await fetch('/api/recipes/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const result = await res.json();
+    if (result.success) {
+      delete db[id];
+      closeModal('confirmDeleteModal');
+      closeModal('editModal');
+      switchView('home');
+      render();
+    } else {
+      alert("Error deleting recipe: " + (result.error || "Unknown error"));
+    }
+  } catch(err) {
+    console.error("Delete recipe error:", err);
+    alert("Failed to delete recipe. Please check server connection.");
+  }
+}
+
+// Simplify serving metrics sizes
+function getServingText(servingJson) {
+  if (!servingJson) return 'serving (100g)';
+  try {
+    const data = typeof servingJson === 'string' ? JSON.parse(servingJson) : servingJson;
+    const metric = data.metric || {};
+    const metricText = metric.unit ? `${metric.quantity}${metric.unit}` : '';
+    if (metricText) return `serving (${metricText})`;
+    
+    const common = data.common || {};
+    const commonText = common.unit ? `${common.quantity} ${common.unit}` : '';
+    if (commonText) return `serving (${commonText})`;
+  } catch(e) {}
+  return 'serving (100g)';
+}
+
+// Close Modal wrapper
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
-  if (id === 'detailsModal') {
-    document.getElementById('detailsVideoContainer').innerHTML = '';
-  }
   if (id === 'editModal') {
     stopCameraScan();
   }
 }
 
-function clearSearch() {
-  document.getElementById('searchInput').value = '';
-  document.getElementById('searchClear').style.display = 'none';
-  render();
+// Barcode Lookup functions
+function toggleBarcodeScanner() {
+  const sec = document.getElementById('barcodeSection');
+  if (sec.style.display === 'none') {
+    sec.style.display = 'block';
+  } else {
+    stopCameraScan();
+    sec.style.display = 'none';
+  }
 }
 
-document.getElementById('searchInput').addEventListener('input', function() {
-  document.getElementById('searchClear').style.display = this.value ? 'flex' : 'none';
-  render();
-});
+function startCameraScan() {
+  const container = document.getElementById('barcodeReaderContainer');
+  const btn = document.getElementById('toggleCameraBtn');
+  const status = document.getElementById('barcodeStatus');
+  
+  if (html5QrCode) {
+    stopCameraScan();
+    return;
+  }
+  
+  container.style.display = 'block';
+  btn.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg> Stop Scanner`;
+  status.textContent = 'Initializing camera...';
+  
+  html5QrCode = new Html5Qrcode("barcodeReader");
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 250, height: 120 } },
+    barcodeText => {
+      document.getElementById('barcodeInput').value = barcodeText;
+      status.textContent = `Scanned barcode: ${barcodeText}`;
+      stopCameraScan();
+    },
+    errorMessage => {}
+  ).then(() => {
+    status.textContent = 'Camera active. Point at barcode.';
+  }).catch(err => {
+    console.error("Camera start failed:", err);
+    status.textContent = 'Failed to access camera.';
+    container.style.display = 'none';
+    html5QrCode = null;
+    btn.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Scan Barcode`;
+  });
+}
 
-['minProtein','maxCalories','maxCarbs'].forEach(id => {
-  document.getElementById(id).addEventListener('input', render);
-});
+function stopCameraScan() {
+  const container = document.getElementById('barcodeReaderContainer');
+  const btn = document.getElementById('toggleCameraBtn');
+  const status = document.getElementById('barcodeStatus');
+  
+  if (html5QrCode) {
+    html5QrCode.stop().then(() => {
+      html5QrCode = null;
+      container.style.display = 'none';
+      btn.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Scan Barcode`;
+    }).catch(err => {
+      console.error("Camera stop failed:", err);
+      html5QrCode = null;
+      container.style.display = 'none';
+    });
+  } else {
+    container.style.display = 'none';
+    btn.innerHTML = `<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> Scan Barcode`;
+  }
+}
 
-loadDB();
+function searchBarcode() {
+  const input = document.getElementById('barcodeInput');
+  const val = input.value.trim();
+  if (!val) return;
+  
+  const status = document.getElementById('barcodeStatus');
+  status.textContent = 'Searching Open Food Facts...';
+  
+  fetch(`/api/barcode/lookup?barcode=${encodeURIComponent(val)}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        status.textContent = `Found: ${data.name}!`;
+        addIngredientRow(data.name, '100g');
+        document.getElementById('barcodeInput').value = '';
+        setTimeout(() => {
+          document.getElementById('barcodeSection').style.display = 'none';
+          status.textContent = '';
+        }, 1200);
+      } else {
+        status.textContent = 'Product not found.';
+      }
+    })
+    .catch(err => {
+      console.error("Barcode search error:", err);
+      status.textContent = 'Lookup error.';
+    });
+}
 
-// Register service worker for PWA
+// Detail View Tab switcher
+function switchDetailTab(tab) {
+  const ingTab = document.getElementById('tab-ingredients');
+  const insTab = document.getElementById('tab-instructions');
+  const ingContent = document.getElementById('ingredientsTabContent');
+  const insContent = document.getElementById('instructionsTabContent');
+  
+  if (tab === 'ingredients') {
+    ingTab.style.background = 'var(--primary-100)';
+    ingTab.style.color = 'white';
+    insTab.style.background = 'transparent';
+    insTab.style.color = 'var(--primary-100)';
+    ingContent.style.display = 'block';
+    insContent.style.display = 'none';
+  } else {
+    insTab.style.background = 'var(--primary-100)';
+    insTab.style.color = 'white';
+    ingTab.style.background = 'transparent';
+    ingTab.style.color = 'var(--primary-100)';
+    ingContent.style.display = 'none';
+    insContent.style.display = 'block';
+  }
+}
+
+// Search & Filter View Logic
+let activeSearchTags = new Set();
+
+function getAvailableTags() {
+  const tagsSet = new Set();
+  Object.values(db).forEach(r => {
+    if (r.tags) {
+      r.tags.forEach(t => {
+        if (t) tagsSet.add(t.trim());
+      });
+    }
+  });
+  return Array.from(tagsSet).sort();
+}
+
+function renderSearchTags() {
+  const container = document.getElementById('searchTagsContainer');
+  const tags = getAvailableTags();
+  if (tags.length === 0) {
+    container.innerHTML = `<span style="font-size:12px; color:var(--neutral-gray2);">No tags available</span>`;
+    return;
+  }
+  container.innerHTML = tags.map(t => {
+    const isActive = activeSearchTags.has(t);
+    return `
+      <div class="category-pill ${isActive ? 'active' : ''}" onclick="toggleSearchTag('${t.replace(/'/g, "\\'")}', this)" style="padding: 6px 14px; font-size: 12px; border-radius: 20px; background: ${isActive ? 'var(--primary-100)' : 'white'}; border: 1px solid var(--primary-40); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; height: auto; width: auto; position: relative; top: 0; left: 0; margin: 0;">
+        <span style="color: ${isActive ? 'white' : 'var(--neutral-black)'}; font-size: 12px; font-weight: 600; width: auto; position: static;">${t}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleSearchTag(tag, el) {
+  if (activeSearchTags.has(tag)) {
+    activeSearchTags.delete(tag);
+  } else {
+    activeSearchTags.add(tag);
+  }
+  renderSearchTags();
+  runSearchFilter();
+}
+
+function updateSearchFilterVal(type, val) {
+  if (type === 'min-protein') {
+    document.getElementById('display-min-protein').textContent = `${val}g`;
+  } else if (type === 'max-carbs') {
+    document.getElementById('display-max-carbs').textContent = val == 150 ? 'Any' : `${val}g`;
+  } else if (type === 'max-fats') {
+    document.getElementById('display-max-fats').textContent = val == 100 ? 'Any' : `${val}g`;
+  } else if (type === 'max-cals') {
+    document.getElementById('display-max-cals').textContent = val == 1500 ? 'Any' : `${val} kcal`;
+  }
+  runSearchFilter();
+}
+
+function resetSearchFilters() {
+  document.getElementById('filterSearchInput').value = '';
+  document.getElementById('filter-min-protein').value = 0;
+  document.getElementById('filter-max-carbs').value = 150;
+  document.getElementById('filter-max-fats').value = 100;
+  document.getElementById('filter-max-cals').value = 1500;
+  
+  document.getElementById('display-min-protein').textContent = '0g';
+  document.getElementById('display-max-carbs').textContent = 'Any';
+  document.getElementById('display-max-fats').textContent = 'Any';
+  document.getElementById('display-max-cals').textContent = 'Any';
+  
+  activeSearchTags.clear();
+  renderSearchTags();
+  runSearchFilter();
+}
+
+function runSearchFilter() {
+  const q = document.getElementById('filterSearchInput').value.toLowerCase().trim();
+  const minProtein = parseFloat(document.getElementById('filter-min-protein').value);
+  const maxCarbs = parseFloat(document.getElementById('filter-max-carbs').value);
+  const maxFats = parseFloat(document.getElementById('filter-max-fats').value);
+  const maxCals = parseFloat(document.getElementById('filter-max-cals').value);
+  
+  const filtered = Object.entries(db).filter(([id, r]) => {
+    // 1. Text Search
+    if (q) {
+      const nameMatch = (r.name || '').toLowerCase().includes(q);
+      const descMatch = (r.description || '').toLowerCase().includes(q);
+      const ingMatch = (r.ingredients || []).some(i => (i.name || '').toLowerCase().includes(q));
+      if (!nameMatch && !descMatch && !ingMatch) return false;
+    }
+    
+    // 2. Macros Filtering
+    const macros = r.macros || {};
+    const p = parseFloat(macros.protein || 0);
+    const c = parseFloat(macros.carbs || 0);
+    const f = parseFloat(macros.fats || 0);
+    const cal = parseFloat(macros.calories || 0);
+    
+    if (p < minProtein) return false;
+    if (maxCarbs < 150 && c > maxCarbs) return false;
+    if (maxFats < 100 && f > maxFats) return false;
+    if (maxCals < 1500 && cal > maxCals) return false;
+    
+    // 3. Tags Filtering
+    if (activeSearchTags.size > 0) {
+      const rTags = (r.tags || []).map(t => t.toLowerCase().trim());
+      for (let activeTag of activeSearchTags) {
+        if (!rTags.includes(activeTag.toLowerCase().trim())) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
+  });
+  
+  document.getElementById('searchResultsCount').textContent = filtered.length;
+  
+  const resultsContainer = document.getElementById('searchResultsContainer');
+  if (filtered.length === 0) {
+    resultsContainer.innerHTML = `<div style="text-align: center; padding: 24px; color: #748189; font-size:14px;">No recipes match the search filters.</div>`;
+    return;
+  }
+  
+  resultsContainer.innerHTML = filtered.map(([id, r]) => {
+    return `
+      <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; border: 1px solid var(--primary-40); margin-bottom: 8px;">
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="flex: 1; min-width: 0;">
+          <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
+          <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openInstructionsModal() {
+  document.getElementById('instructionsModal').classList.add('open');
+}
+
+// Dynamic sub-views loader
+async function loadSubViews() {
+  const views = [
+    { id: 'view-home', url: 'home/index.html', bodyClass: '.v701_909' },
+    { id: 'view-detail', url: 'main/index.html', bodyClass: '.v701_949' },
+    { id: 'view-account', url: 'account/index.html', bodyClass: '.v701_1067' }
+  ];
+  for (const view of views) {
+    try {
+      const response = await fetch(view.url);
+      const text = await response.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/html');
+      
+      const viewContainer = doc.querySelector(view.bodyClass);
+      const targetEl = document.getElementById(view.id);
+      if (viewContainer && targetEl) {
+        targetEl.innerHTML = viewContainer.innerHTML;
+      } else {
+        console.error(`Could not load sub-view for ${view.id}: Container element not found.`);
+      }
+    } catch (err) {
+      console.error(`Error loading sub-view for ${view.id}:`, err);
+    }
+  }
+}
+
+// Initialize application
+async function initApp() {
+  await loadSubViews();
+  
+  // Attach searchInput listener now that home view is loaded
+  const searchInput = document.getElementById('searchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      render();
+    });
+  }
+  
+  await loadDB();
+  
+  // Fade out loading screen
+  const loadingScreen = document.getElementById('app-loading-screen');
+  if (loadingScreen) {
+    loadingScreen.style.opacity = '0';
+    setTimeout(() => {
+      loadingScreen.style.display = 'none';
+    }, 400);
+  }
+}
+
+initApp();
+
+// PWA Service Worker Registration
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
@@ -1894,3 +1571,5 @@ if ('serviceWorker' in navigator) {
 </script>
 </body>
 </html>
+
+

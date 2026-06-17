@@ -72,7 +72,9 @@ def calculate_recipe_macros_from_ingredients(ingredients):
             "protein": int(round(ing_protein)),
             "carbs": int(round(ing_carbs)),
             "fats": int(round(ing_fats)),
-            "calories": int(round(ing_calories))
+            "calories": int(round(ing_calories)),
+            "serving": db_match.serving if db_match else None,
+            "grams": int(round(grams))
         })
             
     return {
@@ -171,6 +173,19 @@ def update_recipe():
         db.update(recipe_id, recipe)
 
         return jsonify({"success": True, "recipe": recipe})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/recipes/delete', methods=['POST'])
+def delete_recipe():
+    try:
+        req_data = request.json or {}
+        recipe_id = req_data.get('id')
+        if not recipe_id:
+            return jsonify({"error": "Missing recipe ID"}), 400
+        
+        success = db.delete(recipe_id)
+        return jsonify({"success": success})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
