@@ -265,19 +265,6 @@
   </div>
 </div>
 
-<!-- Instructions Modal -->
-<div class="modal" id="instructionsModal" onclick="closeModal('instructionsModal')">
-  <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 400px; border-radius: 24px; padding: 24px; max-height: 80%; margin-top: auto; margin-bottom: auto;">
-    <div class="modal-header">
-      <div class="modal-title" style="font-family: 'Outfit'; font-size: 20px; font-weight: 800; color: #0a2533;">Instructions</div>
-      <button class="modal-close" onclick="closeModal('instructionsModal')">
-        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
-      </button>
-    </div>
-    <div id="detailInstructionsList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px; max-height: 60vh; overflow-y: auto; padding-right: 4px;"></div>
-  </div>
-</div>
-
 <!-- ==================== JAVASCRIPT APP LOGIC ==================== -->
 <script>
 let db = {};
@@ -772,6 +759,7 @@ function openRecipeDetails(id) {
   
   // Render portion multipliers initially (starts at 1.0)
   setPortionMultiplier(1.0);
+  setDetailTab('ingredients');
 
   if (ingCount > 0) {
     fetch('/api/recipes/calculate_macros', {
@@ -793,17 +781,17 @@ function openRecipeDetails(id) {
   }
 
   // Load instructions steps
-  const stepsList = document.getElementById('detailInstructionsList');
+  const stepsList = document.getElementById('detailInsList');
   const steps = getSteps(r.description);
   if (steps.length > 0) {
     stepsList.innerHTML = steps.map(s => `
-      <div style="background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 14px; padding: 16px; text-align: left;">
+      <div style="background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 14px; padding: 16px; text-align: left; width: 100% !important;">
         <span style="display: block; font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px;">Step ${s.num}</span>
         <span style="font-size: 14px; color: #0a2533; line-height: 1.45;">${s.text}</span>
       </div>
     `).join('');
   } else {
-    stepsList.innerHTML = `<div style="color:var(--neutral-gray3); font-size:13px; text-align:center; padding:12px;">No instructions provided</div>`;
+    stepsList.innerHTML = `<div style="color:var(--neutral-gray3); font-size:13px; text-align:center; padding:12px; width: 100% !important;">No instructions provided</div>`;
   }
 
   // Embedded video / image setup inside the top header detailImage
@@ -1520,8 +1508,39 @@ function runSearchFilter() {
   }).join('');
 }
 
-function openInstructionsModal() {
-  document.getElementById('instructionsModal').classList.add('open');
+let currentDetailTab = 'ingredients';
+
+function setDetailTab(tab) {
+  currentDetailTab = tab;
+  const titleEl = document.getElementById('detailSectionTitle');
+  const countEl = document.getElementById('detailIngCount');
+  const btnEl = document.getElementById('showInstructionsBtn');
+  const ingListEl = document.getElementById('detailIngList');
+  const insListEl = document.getElementById('detailInsList');
+
+  if (!btnEl) return;
+
+  if (tab === 'ingredients') {
+    if (titleEl) titleEl.textContent = 'Ingredients';
+    if (countEl) countEl.style.display = 'inline';
+    btnEl.innerHTML = '📋 Instructions';
+    if (ingListEl) ingListEl.style.setProperty('display', 'flex', 'important');
+    if (insListEl) insListEl.style.setProperty('display', 'none', 'important');
+  } else {
+    if (titleEl) titleEl.textContent = 'Instructions';
+    if (countEl) countEl.style.display = 'none';
+    btnEl.innerHTML = '🥗 Ingredients';
+    if (ingListEl) ingListEl.style.setProperty('display', 'none', 'important');
+    if (insListEl) insListEl.style.setProperty('display', 'flex', 'important');
+  }
+}
+
+function toggleDetailTab() {
+  if (currentDetailTab === 'ingredients') {
+    setDetailTab('instructions');
+  } else {
+    setDetailTab('ingredients');
+  }
 }
 
 // Dynamic sub-views loader

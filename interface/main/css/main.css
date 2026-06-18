@@ -1329,6 +1329,9 @@ body {
   width: 100% !important;
   padding-bottom: 80px !important;
 }
+.app-view > * {
+  flex-shrink: 0 !important;
+}
 
 /* Detail View Layout Overrides */
 #view-detail.v701_949, 
@@ -1393,10 +1396,10 @@ body {
   left: auto !important;
   width: 100% !important;
   height: auto !important;
-  padding: 28px 24px 80px !important;
+  padding: 16px 24px 80px !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 16px !important;
+  gap: 10px !important;
   overflow: visible !important;
   background: none !important;
   background-image: none !important;

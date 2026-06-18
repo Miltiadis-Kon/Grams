@@ -467,6 +467,9 @@ body {
   width: 100% !important;
   padding-bottom: 80px !important;
 }
+.app-view > * {
+  flex-shrink: 0 !important;
+}
 
 /* Home View Flex Layout */
 #view-home.v701_909, 
@@ -597,6 +600,7 @@ body {
   display: flex !important;
   flex-direction: column !important;
   gap: 10px !important;
+  overflow: visible !important;
 }
 
 

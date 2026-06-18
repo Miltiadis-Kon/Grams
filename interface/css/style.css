@@ -2715,6 +2715,7 @@ body {
   display: flex !important;
   flex-direction: column !important;
   gap: 10px !important;
+  overflow: visible !important;
 }
 
 /* Detail View Layout Overrides */
@@ -2782,10 +2783,10 @@ body {
   left: auto !important;
   width: 100% !important;
   height: auto !important;
-  padding: 28px 24px 80px !important;
+  padding: 16px 24px 80px !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 16px !important;
+  gap: 10px !important;
   overflow: visible !important;
   background: none !important;
   background-image: none !important;
