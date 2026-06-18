@@ -309,7 +309,14 @@ function getIngredientEmoji(name) {
 function getTikTokEmbedUrl(url) {
   if (!url) return '';
   const m = url.match(/\/video\/(\d+)/);
-  return m && m[1] ? `https://www.tiktok.com/embed/v2/${m[1]}` : '';
+  return m && m[1] ? `https://www.tiktok.com/player/v1/${m[1]}?rel=0&loop=1&autoplay=1&music_info=0&description=0&controls=1` : '';
+}
+
+function getRecipeImageUrl(r) {
+  if (r && r.url) {
+    return `/api/thumbnail?url=${encodeURIComponent(r.url)}`;
+  }
+  return (r && r.image) ? r.image : 'baker.png';
 }
 
 function getCreatorHandle(url) {
@@ -414,7 +421,7 @@ function render() {
       <div class="v701_928" onclick="openRecipeDetails('${id}')">
         <div class="v701_929"></div>
         <span class="v701_930">${r.name || 'Untitled'}</span>
-        <div class="v701_931" style="background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-size: cover; background-position: center; border-radius: 16px; background-color: var(--primary-20);"></div>
+        <div class="v701_931" style="background-image: url('${getRecipeImageUrl(r)}'); background-size: cover; background-position: center; border-radius: 16px; background-color: var(--primary-20);"></div>
       </div>
     `;
   }).join('');
@@ -423,7 +430,7 @@ function render() {
   editorsChoiceContainer.innerHTML = filtered.map(([id, r]) => {
     return `
       <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; margin-bottom: 8px; border: 1px solid var(--primary-40);">
-        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${getRecipeImageUrl(r)}'); background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
         <div style="flex: 1; min-width: 0;">
           <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
           <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>
@@ -497,7 +504,7 @@ function renderFavorites() {
   container.innerHTML = favRecipes.map(([id, r]) => {
     return `
       <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; margin-bottom: 8px; border: 1px solid var(--primary-40);">
-        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${getRecipeImageUrl(r)}'); background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
         <div style="flex: 1; min-width: 0;">
           <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
           <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>
@@ -810,10 +817,11 @@ function openRecipeDetails(id) {
   videoContainer.onclick = null;
 
   const embedUrl = getTikTokEmbedUrl(r.url);
+  const coverUrl = getRecipeImageUrl(r);
   if (embedUrl) {
     // Show static cover image first with play button overlay
-    if (r.image) {
-      videoContainer.style.backgroundImage = `url('${r.image}')`;
+    if (coverUrl) {
+      videoContainer.style.backgroundImage = `url('${coverUrl}')`;
     }
     playBtnEl.style.display = 'flex';
     overlayEl.style.display = 'block';
@@ -834,10 +842,10 @@ function openRecipeDetails(id) {
     playerEl.style.display = 'none';
     playerEl.innerHTML = '';
     
-    if (r.image) {
+    if (coverUrl) {
       // Show custom recipe image
       overlayEl.style.display = 'block';
-      videoContainer.style.backgroundImage = `url('${r.image}')`;
+      videoContainer.style.backgroundImage = `url('${coverUrl}')`;
     } else {
       // No video and no image: hide header, shift scroll container up with padding for back/fav buttons
       videoContainer.style.display = 'none';
@@ -1498,7 +1506,7 @@ function runSearchFilter() {
   resultsContainer.innerHTML = filtered.map(([id, r]) => {
     return `
       <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; border: 1px solid var(--primary-40); margin-bottom: 8px;">
-        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${getRecipeImageUrl(r)}'); background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
         <div style="flex: 1; min-width: 0;">
           <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
           <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>

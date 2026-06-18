@@ -6,7 +6,7 @@ import json
 import sqlite3
 import tempfile
 import requests
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, redirect
 
 app = Flask(__name__, static_url_path='', static_folder='interface')
 
@@ -106,6 +106,25 @@ def save_barcode_to_local_db(barcode, name, protein, carbs, fats, calories):
 @app.route('/')
 def index():
     return send_from_directory('interface', 'index.html')
+
+@app.route('/api/thumbnail')
+def get_thumbnail():
+    target_url = request.args.get('url')
+    if not target_url:
+        return jsonify({"error": "url parameter is required"}), 400
+    try:
+        import urllib.parse
+        oembed_url = f"https://www.tiktok.com/oembed?url={urllib.parse.quote(target_url)}"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        res = requests.get(oembed_url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            thumb_url = data.get('thumbnail_url')
+            if thumb_url:
+                return redirect(thumb_url)
+    except Exception as e:
+        print(f"Error fetching thumbnail from oEmbed: {e}")
+    return send_from_directory('interface', 'baker.png')
 
 @app.route('/recipes_db.json')
 def get_db():
