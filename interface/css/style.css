@@ -183,10 +183,6 @@ body {
 .v701_928 {
   width: 100px;
   height: 136px;
-  background: url("../home/images/v701_928.png");
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: cover;
   opacity: 1;
   position: absolute;
   top: 38px;
@@ -237,15 +233,12 @@ body {
 .v701_932 {
   width: 84px;
   height: 84px;
-  background: url("../home/images/v701_932.png");
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: cover;
   opacity: 1;
   position: absolute;
   top: 8px;
   left: 8px;
   overflow: hidden;
+  background: var(--primary-20);
 }
 .v701_933 {
   width: 84px;
@@ -468,15 +461,12 @@ body {
 .v701_950 {
   width: 648px;
   height: 946px;
-  background: url("../main/images/v701_950.png");
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: cover;
   opacity: 1;
   position: absolute;
   top: 319px;
   left: 133px;
   overflow: hidden;
+  background: var(--primary-20);
 }
 .v701_951 {
   width: 648px;
@@ -2029,16 +2019,14 @@ body {
   border-radius: 50%;
 }
 .v701_1093 {
-  width: 100px;
-  height: 146px;
-  background: url("../account/images/v701_1093.png");
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: cover;
+  width: 104px;
+  height: 104px;
+  background: var(--primary-40);
   opacity: 1;
   position: absolute;
-  top: 29px;
-  left: 29px;
+  top: 0px;
+  left: 0px;
+  border-radius: 50%;
   overflow: hidden;
 }
 .v701_1094 {
@@ -2256,11 +2244,7 @@ body {
   color: #ffffff !important;
 }
 
-/* Detail view adjustments */
-.v701_949 {
-  overflow-y: auto !important;
-  position: relative !important;
-}
+/* Detail view adjustments — primary layout rules in GRAMS RESPONSIVE LAYOUT OVERRIDES below */
 
 /* Custom back button */
 .back-btn {
@@ -2361,11 +2345,7 @@ body {
   height: auto !important;
 }
 
-/* Account view adjustments */
-.v701_1067 {
-  overflow-y: auto !important;
-  position: relative !important;
-}
+/* Account view adjustments — primary layout rules in GRAMS RESPONSIVE LAYOUT OVERRIDES below */
 
 .v701_1068 {
   position: relative !important;
@@ -2583,7 +2563,15 @@ body {
 
 /* Failsafe to enforce inline display none set by SPA JS router */
 .app-view[style*="display: none"],
-.app-view[style*="display:none"] {
+.app-view[style*="display:none"],
+#view-home.app-view[style*="display: none"],
+#view-home.app-view[style*="display:none"],
+#view-detail.app-view[style*="display: none"],
+#view-detail.app-view[style*="display:none"],
+#view-search.app-view[style*="display: none"],
+#view-search.app-view[style*="display:none"],
+#view-account.app-view[style*="display: none"],
+#view-account.app-view[style*="display:none"] {
   display: none !important;
 }
 
@@ -2594,17 +2582,20 @@ body {
   width: 100% !important;
   padding-bottom: 80px !important; /* spacing for bottom nav */
 }
+.app-view > * {
+  flex-shrink: 0 !important;
+}
 
 /* Home View Flex Layout */
 #view-home.v701_909, 
 .v701_909 {
-  position: static !important;
+  position: absolute !important;
   display: flex !important;
   flex-direction: column !important;
   gap: 20px !important;
-  height: auto !important;
+  height: 100% !important;
   width: 100% !important;
-  overflow: visible !important;
+  overflow-y: auto !important;
   background: #ffffff !important;
 }
 /* Home search container */
@@ -2729,10 +2720,10 @@ body {
 /* Detail View Layout Overrides */
 #view-detail.v701_949, 
 .v701_949 {
-  position: static !important;
-  height: auto !important;
+  position: absolute !important;
+  height: 100% !important;
   width: 100% !important;
-  overflow: visible !important;
+  overflow-y: auto !important;
   background: #ffffff !important;
   display: flex !important;
   flex-direction: column !important;
@@ -2748,6 +2739,10 @@ body {
   border-radius: 0 0 24px 24px !important;
   overflow: hidden !important;
   box-shadow: 0 4px 20px rgba(10,37,51,0.1) !important;
+  transition: height 0.3s ease-in-out;
+}
+#detailImage.v701_950.expanded {
+  height: 540px !important;
 }
 /* Back & Fav buttons container alignment */
 .back-btn {
@@ -2803,7 +2798,7 @@ body {
   width: 100% !important;
   height: auto !important;
   margin: 0 0 12px 0 !important;
-  display: flex !important;
+  display: none !important;
   align-items: center !important;
   background: none !important;
   background-image: none !important;
@@ -2827,10 +2822,10 @@ body {
 /* Account/Favorites Layout Overrides */
 #view-account.v701_1067, 
 .v701_1067 {
-  position: static !important;
-  height: auto !important;
+  position: absolute !important;
+  height: 100% !important;
   width: 100% !important;
-  overflow: visible !important;
+  overflow-y: auto !important;
   background: #ffffff !important;
   display: flex !important;
   flex-direction: column !important;

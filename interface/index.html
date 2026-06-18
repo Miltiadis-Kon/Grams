@@ -262,6 +262,7 @@
       </div>
       <button type="submit" class="btn-save">Save Quantity</button>
     </form>
+  </div>
 </div>
 
 <!-- Instructions Modal -->
@@ -426,7 +427,7 @@ function render() {
       <div class="v701_928" onclick="openRecipeDetails('${id}')">
         <div class="v701_929"></div>
         <span class="v701_930">${r.name || 'Untitled'}</span>
-        <div class="v701_931" style="background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; border-radius: 16px;"></div>
+        <div class="v701_931" style="background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-size: cover; background-position: center; border-radius: 16px; background-color: var(--primary-20);"></div>
       </div>
     `;
   }).join('');
@@ -435,7 +436,7 @@ function render() {
   editorsChoiceContainer.innerHTML = filtered.map(([id, r]) => {
     return `
       <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; margin-bottom: 8px; border: 1px solid var(--primary-40);">
-        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
         <div style="flex: 1; min-width: 0;">
           <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
           <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>
@@ -448,18 +449,20 @@ function render() {
 // Switch SPA views
 function switchView(viewName) {
   // Stop any playing video when switching views
-  const playerEl = document.getElementById('headerVideoPlayer');
-  if (playerEl) {
-    playerEl.innerHTML = '';
-    playerEl.style.display = 'none';
-  }
-  const overlayEl = document.getElementById('detailImageOverlay');
-  if (overlayEl) {
-    overlayEl.style.display = 'block';
-  }
-  const playBtnEl = document.getElementById('videoPlayBtn');
-  if (playBtnEl) {
-    playBtnEl.style.display = 'flex';
+  if (viewName !== 'detail') {
+    const playerEl = document.getElementById('headerVideoPlayer');
+    if (playerEl) {
+      playerEl.innerHTML = '';
+      playerEl.style.display = 'none';
+    }
+    const overlayEl = document.getElementById('detailImageOverlay');
+    if (overlayEl) {
+      overlayEl.style.display = 'block';
+    }
+    const playBtnEl = document.getElementById('videoPlayBtn');
+    if (playBtnEl) {
+      playBtnEl.style.display = 'flex';
+    }
   }
 
   currentView = viewName;
@@ -507,7 +510,7 @@ function renderFavorites() {
   container.innerHTML = favRecipes.map(([id, r]) => {
     return `
       <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; margin-bottom: 8px; border: 1px solid var(--primary-40);">
-        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
         <div style="flex: 1; min-width: 0;">
           <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
           <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>
@@ -811,19 +814,33 @@ function openRecipeDetails(id) {
   const scrollContainer = document.querySelector('.v701_953');
   
   // Reset standard positioning
-  scrollContainer.style.top = '290px';
+  scrollContainer.style.marginTop = '';
   scrollContainer.style.paddingTop = '0px';
   videoContainer.style.display = 'block';
   videoContainer.style.backgroundImage = 'none';
+  videoContainer.classList.remove('expanded');
   videoContainer.onclick = null;
 
   const embedUrl = getTikTokEmbedUrl(r.url);
   if (embedUrl) {
-    // Play video directly as the image/header background (embed it immediately)
-    playBtnEl.style.display = 'none';
-    overlayEl.style.display = 'none';
-    playerEl.style.display = 'block';
-    playerEl.innerHTML = `<iframe class="video-iframe" src="${embedUrl}" allowfullscreen scrolling="no" style="width:100%; height:100%; border:none; overflow:hidden;"></iframe>`;
+    // Show static cover image first with play button overlay
+    if (r.image) {
+      videoContainer.style.backgroundImage = `url('${r.image}')`;
+    }
+    playBtnEl.style.display = 'flex';
+    overlayEl.style.display = 'block';
+    playerEl.style.display = 'none';
+    playerEl.innerHTML = '';
+    
+    // Play video and extend container on click
+    videoContainer.onclick = () => {
+      videoContainer.classList.add('expanded');
+      playBtnEl.style.display = 'none';
+      overlayEl.style.display = 'none';
+      playerEl.style.display = 'block';
+      playerEl.innerHTML = `<iframe class="video-iframe" src="${embedUrl}" allowfullscreen scrolling="no" style="width:100%; height:100%; border:none; overflow:hidden;"></iframe>`;
+      videoContainer.onclick = null; // click only once to start
+    };
   } else {
     playBtnEl.style.display = 'none';
     playerEl.style.display = 'none';
@@ -834,9 +851,9 @@ function openRecipeDetails(id) {
       overlayEl.style.display = 'block';
       videoContainer.style.backgroundImage = `url('${r.image}')`;
     } else {
-      // No video and no image: hide header completely, slide scroll container to top with padding for back/fav buttons
+      // No video and no image: hide header, shift scroll container up with padding for back/fav buttons
       videoContainer.style.display = 'none';
-      scrollContainer.style.top = '0px';
+      scrollContainer.style.marginTop = '-280px';
       scrollContainer.style.paddingTop = '100px';
     }
   }
@@ -1493,7 +1510,7 @@ function runSearchFilter() {
   resultsContainer.innerHTML = filtered.map(([id, r]) => {
     return `
       <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; border: 1px solid var(--primary-40); margin-bottom: 8px;">
-        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: url('${r.image || 'home/images/v701_932.png'}'); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
+        <div style="width: 64px; height: 64px; border-radius: 12px; background-image: ${r.image ? `url('${r.image}')` : 'none'}; background-color: var(--primary-20); background-size: cover; background-position: center; margin-right: 12px; flex-shrink: 0;"></div>
         <div style="flex: 1; min-width: 0;">
           <h4 style="font-size: 15px; font-weight: 600; color: #0a2533; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${r.name || 'Untitled'}</h4>
           <p style="font-size: 12px; color: #748189; margin: 4px 0 0 0;">${Math.round(r.macros.protein || 0)}g Protein | ${Math.round(r.macros.calories || 0)} kcal</p>

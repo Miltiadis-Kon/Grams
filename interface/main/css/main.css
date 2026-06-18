@@ -1310,7 +1310,15 @@ body {
 
 /* Failsafe to enforce inline display none set by SPA JS router */
 .app-view[style*="display: none"],
-.app-view[style*="display:none"] {
+.app-view[style*="display:none"],
+#view-home.app-view[style*="display: none"],
+#view-home.app-view[style*="display:none"],
+#view-detail.app-view[style*="display: none"],
+#view-detail.app-view[style*="display:none"],
+#view-search.app-view[style*="display: none"],
+#view-search.app-view[style*="display:none"],
+#view-account.app-view[style*="display: none"],
+#view-account.app-view[style*="display:none"] {
   display: none !important;
 }
 
@@ -1325,10 +1333,10 @@ body {
 /* Detail View Layout Overrides */
 #view-detail.v701_949, 
 .v701_949 {
-  position: static !important;
-  height: auto !important;
+  position: absolute !important;
+  height: 100% !important;
   width: 100% !important;
-  overflow: visible !important;
+  overflow-y: auto !important;
   background: #ffffff !important;
   display: flex !important;
   flex-direction: column !important;
@@ -1344,6 +1352,10 @@ body {
   border-radius: 0 0 24px 24px !important;
   overflow: hidden !important;
   box-shadow: 0 4px 20px rgba(10,37,51,0.1) !important;
+  transition: height 0.3s ease-in-out;
+}
+#detailImage.v701_950.expanded {
+  height: 540px !important;
 }
 /* Back & Fav buttons container alignment */
 .back-btn {
@@ -1396,7 +1408,7 @@ body {
   width: 100% !important;
   height: auto !important;
   margin: 0 0 12px 0 !important;
-  display: flex !important;
+  display: none !important;
   align-items: center !important;
   background: none !important;
   background-image: none !important;

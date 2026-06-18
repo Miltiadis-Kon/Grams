@@ -340,7 +340,15 @@ body {
 
 /* Failsafe to enforce inline display none set by SPA JS router */
 .app-view[style*="display: none"],
-.app-view[style*="display:none"] {
+.app-view[style*="display:none"],
+#view-home.app-view[style*="display: none"],
+#view-home.app-view[style*="display:none"],
+#view-detail.app-view[style*="display: none"],
+#view-detail.app-view[style*="display:none"],
+#view-search.app-view[style*="display: none"],
+#view-search.app-view[style*="display:none"],
+#view-account.app-view[style*="display: none"],
+#view-account.app-view[style*="display:none"] {
   display: none !important;
 }
 
@@ -355,10 +363,10 @@ body {
 /* Account/Favorites Layout Overrides */
 #view-account.v701_1067, 
 .v701_1067 {
-  position: static !important;
-  height: auto !important;
+  position: absolute !important;
+  height: 100% !important;
   width: 100% !important;
-  overflow: visible !important;
+  overflow-y: auto !important;
   background: #ffffff !important;
   display: flex !important;
   flex-direction: column !important;
