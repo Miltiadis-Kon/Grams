@@ -98,14 +98,12 @@ class RecipeDatabase:
 
         with self._lock:
             try:
-                # Check existence first to raise the expected ValueError
-                response = self._client.table(self._table_name).select("recipe_id").eq("recipe_id", recipe_id).execute()
-                if len(response.data) > 0:
-                    raise ValueError(f"Recipe '{recipe_id}' already exists in database")
-
                 self._client.table(self._table_name).insert(data).execute()
                 logger.info("Inserted recipe '%s' to Supabase table '%s'", recipe_id, self._table_name)
             except Exception as exc:
+                exc_str = str(exc)
+                if "23505" in exc_str or "already exists" in exc_str.lower():
+                    raise ValueError(f"Recipe '{recipe_id}' already exists in database") from exc
                 logger.error("Supabase insert() failed for table '%s': %s", self._table_name, exc)
                 raise
 

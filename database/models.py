@@ -38,6 +38,7 @@ class MacroNutrients:
             "carbs": round(self.carbs, 2),
             "fats": round(self.fats, 2),
             "calories": self.calories,
+            "serving": self.serving,
         }
 
     @classmethod
@@ -47,6 +48,7 @@ class MacroNutrients:
             carbs=float(data.get("carbs", 0)),
             fats=float(data.get("fats", 0)),
             calories=int(data.get("calories", 0)),
+            serving=data.get("serving"),
         )
 
 

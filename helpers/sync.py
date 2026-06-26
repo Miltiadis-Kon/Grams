@@ -132,30 +132,15 @@ class SyncPipeline:
             '  "ingredients": [\n'
             '    {"name": "ingredient 1 name", "quantity": "quantity 1"},\n'
             '    {"name": "ingredient 2 name", "quantity": "quantity 2"}\n'
-            '  ],\n'
-            '  "macros": {\n'
-            '    "protein": 0.0,\n'
-            '    "carbs": 0.0,\n'
-            '    "fats": 0.0,\n'
-            '    "calories": 0\n'
-            '  }\n'
+            '  ]\n'
             "}\n\n"
             "If it is NOT a recipe (e.g. fitness tips, general talking, product review, travel), respond with:\n"
             "{\n"
             '  "is_recipe": false,\n'
             '  "title": "",\n'
-            '  "ingredients": [],\n'
-            '  "macros": {\n'
-            '    "protein": 0.0,\n'
-            '    "carbs": 0.0,\n'
-            '    "fats": 0.0,\n'
-            '    "calories": 0\n'
-            '  }\n'
+            '  "ingredients": []\n'
             "}\n\n"
-            "IMPORTANT instructions for macros calculation:\n"
-            "- If the macro-nutrients (protein, carbs, fats, calories) are explicitly mentioned in the text, extract them.\n"
-            "- If they are not mentioned, set all macro values to 0.0 / 0. DO NOT estimate them under any circumstances.\n"
-            "- The values for protein, carbs, fats must be numbers in grams. calories must be an integer representing kcal.\n"
+            "IMPORTANT instructions:\n"
             "- Output ONLY the raw JSON block. Do not include markdown code blocks, do not include any preamble, introduction, or explanation.\n\n"
             f"Text:\n{text[:6000]}"
         )

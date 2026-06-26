@@ -49,6 +49,14 @@ def clean_table(table_identifier: str) -> None:
     total_recipes = len(recipes)
     logger.info("Found %d recipes in '%s'. Checking ingredients...", total_recipes, table_identifier)
 
+    # Initialize analyzer once outside the loop to avoid repeatedly opening/closing SQLite connection
+    analyzer = None
+    try:
+        from helpers.nutrition import NutritionAnalyzer
+        analyzer = NutritionAnalyzer()
+    except Exception as e:
+        logger.warning("Failed to initialize NutritionAnalyzer, macros will not be recalculated: %s", e)
+
     updated_count = 0
     for recipe_id, recipe in recipes.items():
         # Ensure ingredients is a list
@@ -83,28 +91,30 @@ def clean_table(table_identifier: str) -> None:
             recipe["ingredients"] = new_ingredients
             
             # Recalculate macros for the recipe since ingredients/quantities modified
-            try:
-                from helpers.nutrition import NutritionAnalyzer
-                analyzer = NutritionAnalyzer()
-                # Recalculate macros
-                desc = recipe.get("description", "")
-                macros = analyzer.analyze_ingredients(new_ingredients, description_for_servings=desc)
-                recipe["macros"] = {
-                    "protein": macros.protein,
-                    "carbs": macros.carbs,
-                    "fats": macros.fats,
-                    "calories": macros.calories
-                }
-                logger.info("    Recalculated macros: P:%.1f C:%.1f F:%.1f Cal:%d",
-                            macros.protein, macros.carbs, macros.fats, macros.calories)
-            except Exception as e:
-                logger.warning("    Failed to recalculate macros for recipe '%s': %s", recipe_id, e)
+            if analyzer:
+                try:
+                    # Recalculate macros
+                    desc = recipe.get("description", "")
+                    macros = analyzer.analyze_ingredients(new_ingredients, description_for_servings=desc)
+                    recipe["macros"] = {
+                        "protein": macros.protein,
+                        "carbs": macros.carbs,
+                        "fats": macros.fats,
+                        "calories": macros.calories
+                    }
+                    logger.info("    Recalculated macros: P:%.1f C:%.1f F:%.1f Cal:%d",
+                                macros.protein, macros.carbs, macros.fats, macros.calories)
+                except Exception as e:
+                    logger.warning("    Failed to recalculate macros for recipe '%s': %s", recipe_id, e)
 
             try:
                 db.update(recipe_id, recipe)
                 updated_count += 1
             except Exception as e:
                 logger.error("    Failed to update recipe '%s' in database: %s", recipe_id, e)
+
+    if analyzer:
+        analyzer.close()
 
     logger.info("Completed cleaning table '%s'. Updated %d/%d recipes.", table_identifier, updated_count, total_recipes)
 

@@ -67,6 +67,7 @@ class NutritionAnalyzer:
 
         # Build the SQLite index from the TSV
         self._build_sqlite_index()
+        self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
 
     def _download_dataset(self) -> None:
         """Download and extract the OpenNutrition Foods ZIP archive."""
@@ -126,9 +127,16 @@ class NutritionAnalyzer:
             logger.warning("TSV file not found at %s - skipping index build", self._tsv_path)
             return
 
-        logger.info("Building SQLite index from %s ...", self._tsv_path)
-        self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
-        cur = self._conn.cursor()
+        temp_db_path = self._db_path + ".tmp"
+        if os.path.exists(temp_db_path):
+            try:
+                os.remove(temp_db_path)
+            except OSError:
+                pass
+
+        logger.info("Building SQLite index from %s into temporary file %s ...", self._tsv_path, temp_db_path)
+        conn = sqlite3.connect(temp_db_path)
+        cur = conn.cursor()
 
         # Main table for nutritional data
         cur.execute("""
@@ -156,6 +164,7 @@ class NutritionAnalyzer:
             reader = csv.DictReader(fh, delimiter="\t")
             if reader.fieldnames is None:
                 logger.error("TSV file has no header row")
+                conn.close()
                 return
 
             batch = []
@@ -204,7 +213,11 @@ class NutritionAnalyzer:
 
         # Populate the FTS index
         cur.execute("INSERT INTO foods_fts(foods_fts) VALUES('rebuild')")
-        self._conn.commit()
+        conn.commit()
+        conn.close()
+
+        # Atomically replace the final DB file
+        os.replace(temp_db_path, self._db_path)
 
         if parse_errors:
             logger.warning("Encountered %d JSON parse errors during indexing", parse_errors)
@@ -232,6 +245,10 @@ class NutritionAnalyzer:
                     return self._translation_cache[cleaned_text]
                 
                 translated = self._translator.translate(text)
+                if translated and "mymemory warning" in translated.lower():
+                    logger.warning("MyMemory translation limit warning encountered for '%s': %s", text, translated)
+                    return text  # fallback to original Greek text
+                
                 logger.info("Translated Greek ingredient '%s' to English '%s'", text, translated)
                 self._translation_cache[cleaned_text] = translated
                 return translated

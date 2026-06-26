@@ -15,10 +15,18 @@ DB_FILE_PATH = os.path.join(os.path.dirname(__abspath__ := os.path.abspath(__fil
 NUTRITION_DB_PATH = os.path.join(os.path.dirname(__abspath__), "data", "opennutrition.db")
 db = RecipeDatabase(DB_FILE_PATH)
 
+_analyzer = None
+
+def get_analyzer():
+    global _analyzer
+    if _analyzer is None:
+        from helpers.nutrition import NutritionAnalyzer
+        _analyzer = NutritionAnalyzer()
+    return _analyzer
+
 def calculate_recipe_macros_from_ingredients(ingredients):
     try:
-        from helpers.nutrition import NutritionAnalyzer
-        analyzer = NutritionAnalyzer()
+        analyzer = get_analyzer()
     except Exception as e:
         print(f"Could not load NutritionAnalyzer: {e}")
         return {"protein": 0, "carbs": 0, "fats": 0, "calories": 0, "ingredients": []}
@@ -218,13 +226,22 @@ def search_ingredients():
         return jsonify({"results": [], "warning": "Nutrition database not initialized"}), 200
 
     try:
+        # Translate Greek search queries to English first
+        try:
+            analyzer = get_analyzer()
+            q_en = analyzer._translate_if_greek(q)
+        except Exception as e:
+            print(f"Failed to translate autocomplete query '{q}': {e}")
+            q_en = q
+
         conn = sqlite3.connect(NUTRITION_DB_PATH)
         cur = conn.cursor()
 
         # Sanitize query and prepare for prefix match
-        sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', q)
+        sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', q_en)
         words = [w for w in sanitized.split() if w]
         if not words:
+            conn.close()
             return jsonify({"results": []})
         
         words[-1] = words[-1] + '*'

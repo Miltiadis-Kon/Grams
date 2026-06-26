@@ -64,10 +64,12 @@ class AutoTagger:
             auto_tags.add("Low-Calorie")
 
         # ── 2. Keyword scanning ──────────────────────
-        searchable_text = f"{recipe.name} {recipe.description}".lower()
+        import re
+        searchable_text = f"{recipe.name} {recipe.description}"
 
         for keyword, tag_value in self._keyword_map.items():
-            if keyword.lower() in searchable_text:
+            pattern = r"\b" + re.escape(keyword) + r"\b"
+            if re.search(pattern, searchable_text, re.IGNORECASE):
                 auto_tags.add(tag_value)
 
         # ── 3. Set union with manual tags ────────────
