@@ -243,6 +243,12 @@ class NutritionAnalyzer:
                     ing["hash"] = db_match.food_id
                 if db_match.food_name:
                     ing["name"] = db_match.food_name
+                    
+                ing["protein"] = db_match.protein * scale
+                ing["carbs"] = db_match.carbs * scale
+                ing["fats"] = db_match.fats * scale
+                ing["calories"] = db_match.calories * scale
+                ing["grams"] = grams
 
             return (name_str, grams, scale, db_match)
 

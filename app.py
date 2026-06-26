@@ -76,6 +76,12 @@ def calculate_recipe_macros_from_ingredients(ingredients):
             ing_fats = db_match.fats * scale
             ing_calories = db_match.calories * scale
             
+            ing["protein"] = ing_protein
+            ing["carbs"] = ing_carbs
+            ing["fats"] = ing_fats
+            ing["calories"] = ing_calories
+            ing["grams"] = grams
+            
         return {
             "name": name,
             "quantity": qty_str,

@@ -769,22 +769,38 @@ function openRecipeDetails(id) {
   setDetailTab('ingredients');
 
   if (ingCount > 0) {
-    fetch('/api/recipes/calculate_macros', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ingredients: currentRecipeIngredients })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.ingredients) {
-          currentRecipeDetailedIngredients = data.ingredients;
-          
-          const activeBtn = document.querySelector('.multiplier-group .btn-mult.active');
-          const currentMult = activeBtn ? parseFloat(activeBtn.getAttribute('data-val')) : 1.0;
-          setPortionMultiplier(currentMult);
-        }
+    const hasEmbeddedMacros = currentRecipeIngredients.some(ing => ing.protein !== undefined);
+    if (hasEmbeddedMacros) {
+      currentRecipeDetailedIngredients = currentRecipeIngredients.map(ing => ({
+        protein: ing.protein || 0,
+        carbs: ing.carbs || 0,
+        fats: ing.fats || 0,
+        calories: ing.calories || 0,
+        grams: ing.grams || 0,
+        quantity: ing.quantity
+      }));
+      
+      const activeBtn = document.querySelector('.multiplier-group .btn-mult.active');
+      const currentMult = activeBtn ? parseFloat(activeBtn.getAttribute('data-val')) : 1.0;
+      setPortionMultiplier(currentMult);
+    } else {
+      fetch('/api/recipes/calculate_macros', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredients: currentRecipeIngredients })
       })
-      .catch(err => console.error("Error loading ingredient breakdowns:", err));
+        .then(res => res.json())
+        .then(data => {
+          if (data.ingredients) {
+            currentRecipeDetailedIngredients = data.ingredients;
+            
+            const activeBtn = document.querySelector('.multiplier-group .btn-mult.active');
+            const currentMult = activeBtn ? parseFloat(activeBtn.getAttribute('data-val')) : 1.0;
+            setPortionMultiplier(currentMult);
+          }
+        })
+        .catch(err => console.error("Error loading ingredient breakdowns:", err));
+    }
   }
 
   // Load instructions steps
