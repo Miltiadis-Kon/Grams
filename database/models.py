@@ -21,6 +21,8 @@ class MacroNutrients:
     fats: float = 0.0
     calories: int = 0
     serving: Optional[str] = None
+    food_id: Optional[str] = None
+    food_name: Optional[str] = None
 
     def calculate_calories_atwater(self) -> int:
         """
@@ -33,13 +35,18 @@ class MacroNutrients:
         return self.calories
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "protein": round(self.protein, 2),
             "carbs": round(self.carbs, 2),
             "fats": round(self.fats, 2),
             "calories": self.calories,
             "serving": self.serving,
         }
+        if self.food_id:
+            d["food_id"] = self.food_id
+        if self.food_name:
+            d["food_name"] = self.food_name
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> MacroNutrients:
@@ -49,6 +56,8 @@ class MacroNutrients:
             fats=float(data.get("fats", 0)),
             calories=int(data.get("calories", 0)),
             serving=data.get("serving"),
+            food_id=data.get("food_id"),
+            food_name=data.get("food_name"),
         )
 
 

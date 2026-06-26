@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import concurrent.futures
 from typing import Optional
 from functools import lru_cache
 
@@ -70,12 +71,22 @@ class NutritionAnalyzer:
         return text
 
     @lru_cache(maxsize=2048)
-    def lookup_food(self, query: str) -> Optional[MacroNutrients]:
+    def lookup_food(self, query: str, ing_hash: str = None) -> Optional[MacroNutrients]:
         """
-        Search the Supabase foods table for a food item by name.
+        Search the Supabase foods table for a food item by name or hash.
 
         Returns the top match's macros, or None if no match found.
         """
+        try:
+            # 0. Try ID exact match if hash is provided
+            if ing_hash:
+                response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").eq("id", ing_hash).execute()
+                if response.data:
+                    row = response.data[0]
+                    return self._row_to_macros(row, row["name"], query)
+        except Exception as exc:
+            logger.warning("Supabase foods lookup by hash failed for '%s': %s", ing_hash, exc)
+
         # Translate Greek queries to English first so they can match the English foods DB
         query_en = self._translate_if_greek(query)
 
@@ -86,7 +97,7 @@ class NutritionAnalyzer:
 
         try:
             # 1. Try exact match first
-            response = self._client.table("foods").select("protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).eq("name", query_en).execute()
+            response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).eq("name", query_en).execute()
             if response.data:
                 row = response.data[0]
                 return self._row_to_macros(row, query_en, query)
@@ -95,13 +106,13 @@ class NutritionAnalyzer:
             search_words = [w for w in sanitized.split() if w]
             fts_query = " & ".join(search_words)
             
-            response = self._client.table("foods").select("protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).text_search("name", fts_query).execute()
+            response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).text_search("name", fts_query).execute()
             if response.data:
                 row = response.data[0]
                 return self._row_to_macros(row, query_en, query)
 
             # 3. Fallback to ILIKE substring matching
-            response = self._client.table("foods").select("protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).ilike("name", f"%{sanitized}%").execute()
+            response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).ilike("name", f"%{sanitized}%").execute()
             if response.data:
                 row = response.data[0]
                 return self._row_to_macros(row, query_en, query)
@@ -117,13 +128,17 @@ class NutritionAnalyzer:
         fat = float(row.get("fat_g") or 0.0)
         energy = float(row.get("energy_kcal") or 0.0)
         serving = row.get("serving")
+        food_id = row.get("id")
+        food_name = row.get("name")
         
         macros = MacroNutrients(
             protein=protein,
             carbs=carbs,
             fats=fat,
             calories=int(round(energy)),
-            serving=serving
+            serving=serving,
+            food_id=food_id,
+            food_name=food_name
         )
         logger.debug("Matched '%s' (translated from '%s') → P:%.1f C:%.1f F:%.1f Cal:%d",
                      query_en, query_orig, protein, carbs, fat, energy)
@@ -203,11 +218,12 @@ class NutritionAnalyzer:
         total = MacroNutrients()
         matches = 0
 
-        for ing in ingredients:
+        def process_ing(ing):
             name_str = ing.get("name", "").strip()
             qty_str = ing.get("quantity", "").strip()
+            ing_hash = ing.get("hash", "").strip()
             if not name_str:
-                continue
+                return None
 
             # Parse quantity and name combined to retrieve amount object
             sentence = f"{qty_str} {name_str}".strip()
@@ -220,18 +236,32 @@ class NutritionAnalyzer:
             grams = self._get_ingredient_grams(amount_obj, name_str)
             scale = grams / 100.0
 
-            db_match = self.lookup_food(name_str)
+            db_match = self.lookup_food(name_str, ing_hash if ing_hash else None)
+            
             if db_match:
-                total.protein += db_match.protein * scale
-                total.carbs += db_match.carbs * scale
-                total.fats += db_match.fats * scale
-                total.calories += db_match.calories * scale
-                matches += 1
-                logger.debug("Matched ingredient '%s' -> P:%.1f C:%.1f F:%.1f Cal:%d (grams: %.1f)",
-                             name_str, db_match.protein * scale, db_match.carbs * scale,
-                             db_match.fats * scale, db_match.calories * scale, grams)
-            else:
-                logger.debug("No match for ingredient '%s'", name_str)
+                if db_match.food_id:
+                    ing["hash"] = db_match.food_id
+                if db_match.food_name:
+                    ing["name"] = db_match.food_name
+
+            return (name_str, grams, scale, db_match)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            for res in executor.map(process_ing, ingredients):
+                if res is None:
+                    continue
+                name_str, grams, scale, db_match = res
+                if db_match:
+                    total.protein += db_match.protein * scale
+                    total.carbs += db_match.carbs * scale
+                    total.fats += db_match.fats * scale
+                    total.calories += db_match.calories * scale
+                    matches += 1
+                    logger.debug("Matched ingredient '%s' -> P:%.1f C:%.1f F:%.1f Cal:%d (grams: %.1f)",
+                                 name_str, db_match.protein * scale, db_match.carbs * scale,
+                                 db_match.fats * scale, db_match.calories * scale, grams)
+                else:
+                    logger.debug("No match for ingredient '%s'", name_str)
 
         if matches > 0:
             servings = self._extract_servings(description_for_servings)

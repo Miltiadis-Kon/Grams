@@ -5,6 +5,7 @@ import re
 import json
 import tempfile
 import requests
+import concurrent.futures
 from flask import Flask, jsonify, request, send_from_directory, redirect
 from ingredient_parser import parse_ingredient
 
@@ -38,11 +39,12 @@ def calculate_recipe_macros_from_ingredients(ingredients):
     
     ingredients_breakdown = []
     
-    for ing in ingredients:
+    def process_ingredient(ing):
         name = ing.get('name', '').strip()
         qty_str = ing.get('quantity', '').strip()
+        ing_hash = ing.get('hash', '').strip()
         if not name:
-            continue
+            return None
             
         grams = 100.0
         amount_obj = None
@@ -56,33 +58,50 @@ def calculate_recipe_macros_from_ingredients(ingredients):
         grams = analyzer._get_ingredient_grams(amount_obj, name)
         scale = grams / 100.0
         
-        db_match = analyzer.lookup_food(name)
+        db_match = analyzer.lookup_food(name, ing_hash if ing_hash else None)
         ing_protein = 0.0
         ing_carbs = 0.0
         ing_fats = 0.0
         ing_calories = 0.0
         
         if db_match:
+            if db_match.food_id:
+                ing["hash"] = db_match.food_id
+            if db_match.food_name:
+                ing["name"] = db_match.food_name
+                name = db_match.food_name
+                
             ing_protein = db_match.protein * scale
             ing_carbs = db_match.carbs * scale
             ing_fats = db_match.fats * scale
             ing_calories = db_match.calories * scale
             
-            total_protein += ing_protein
-            total_carbs += ing_carbs
-            total_fats += ing_fats
-            total_calories += ing_calories
-            
-        ingredients_breakdown.append({
+        return {
             "name": name,
             "quantity": qty_str,
+            "hash": db_match.food_id if db_match else None,
             "protein": int(round(ing_protein)),
             "carbs": int(round(ing_carbs)),
             "fats": int(round(ing_fats)),
             "calories": int(round(ing_calories)),
             "serving": db_match.serving if db_match else None,
-            "grams": int(round(grams))
-        })
+            "grams": int(round(grams)),
+            "_raw_p": ing_protein,
+            "_raw_c": ing_carbs,
+            "_raw_f": ing_fats,
+            "_raw_cal": ing_calories
+        }
+
+    ingredients_breakdown = []
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        for res in executor.map(process_ingredient, ingredients):
+            if res:
+                total_protein += res.pop("_raw_p")
+                total_carbs += res.pop("_raw_c")
+                total_fats += res.pop("_raw_f")
+                total_calories += res.pop("_raw_cal")
+                ingredients_breakdown.append(res)
             
     return {
         "protein": int(round(total_protein)),
