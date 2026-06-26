@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from config import DB_FILE_PATH, DATA_DIR, NOT_ADDED_FILE_PATH
+from config import RECIPES_TABLE, NOT_ADDED_RECIPES_TABLE
 from database import RecipeDatabase
 from .ingester import TikTokIngester
 from .nutrition import NutritionAnalyzer
@@ -34,13 +34,13 @@ class RecipeEngine:
 
     def __init__(
         self,
-        db_path: str = DB_FILE_PATH,
-        data_dir: str = DATA_DIR,
+        recipes_table: str = RECIPES_TABLE,
+        not_added_table: str = NOT_ADDED_RECIPES_TABLE,
     ) -> None:
         # Initialize sub-modules
-        self._database = RecipeDatabase(db_path)
-        self._not_added_database = RecipeDatabase(NOT_ADDED_FILE_PATH)
-        self._nutrition = NutritionAnalyzer(data_dir)
+        self._database = RecipeDatabase(recipes_table)
+        self._not_added_database = RecipeDatabase(not_added_table)
+        self._nutrition = NutritionAnalyzer()
         self._tagger = AutoTagger()
         self._sync = SyncPipeline(self._database, self._not_added_database, self._nutrition, self._tagger)
         self._query = QueryInterface(self._database)

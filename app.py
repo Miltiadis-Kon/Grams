@@ -3,17 +3,17 @@ import config
 
 import re
 import json
-import sqlite3
 import tempfile
 import requests
 from flask import Flask, jsonify, request, send_from_directory, redirect
+from ingredient_parser import parse_ingredient
 
 app = Flask(__name__, static_url_path='', static_folder='interface')
 
 from database import RecipeDatabase
-DB_FILE_PATH = os.path.join(os.path.dirname(__abspath__ := os.path.abspath(__file__)), "database", "recipes_db.json")
-NUTRITION_DB_PATH = os.path.join(os.path.dirname(__abspath__), "data", "opennutrition.db")
-db = RecipeDatabase(DB_FILE_PATH)
+import config
+RECIPES_TABLE = getattr(config, "RECIPES_TABLE", "recipes")
+db = RecipeDatabase(RECIPES_TABLE)
 
 _analyzer = None
 
@@ -47,7 +47,6 @@ def calculate_recipe_macros_from_ingredients(ingredients):
         grams = 100.0
         amount_obj = None
         try:
-            from ingredient_parser import parse_ingredient
             sentence = f"{qty_str} {name}" if qty_str else name
             result = parse_ingredient(sentence)
             amount_obj = result.amount[0] if result.amount else None
@@ -93,23 +92,21 @@ def calculate_recipe_macros_from_ingredients(ingredients):
         "ingredients": ingredients_breakdown
     }
 
-def save_barcode_to_local_db(barcode, name, protein, carbs, fats, calories):
+def save_barcode_to_supabase(barcode, name, protein, carbs, fats, calories):
     try:
-        conn = sqlite3.connect(NUTRITION_DB_PATH)
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT OR REPLACE INTO foods (id, name, protein_g, carbs_g, fat_g, energy_kcal) VALUES (?, ?, ?, ?, ?, ?)",
-            (barcode, name, protein, carbs, fats, calories)
-        )
-        cur.execute("SELECT rowid FROM foods WHERE id=?", (barcode,))
-        row = cur.fetchone()
-        if row:
-            rowid = row[0]
-            cur.execute("INSERT OR REPLACE INTO foods_fts (rowid, name) VALUES (?, ?)", (rowid, name))
-        conn.commit()
-        conn.close()
+        analyzer = get_analyzer()
+        data = {
+            "id": barcode,
+            "name": name,
+            "protein_g": protein,
+            "carbs_g": carbs,
+            "fat_g": fats,
+            "energy_kcal": calories,
+            "serving": None
+        }
+        analyzer._client.table("foods").upsert(data).execute()
     except Exception as e:
-        print(f"Error saving barcode to DB: {e}")
+        print(f"Error saving barcode to Supabase: {e}")
 
 @app.route('/')
 def index():
@@ -222,9 +219,6 @@ def search_ingredients():
     if not q or len(q) < 2:
         return jsonify({"results": []})
 
-    if not os.path.exists(NUTRITION_DB_PATH):
-        return jsonify({"results": [], "warning": "Nutrition database not initialized"}), 200
-
     try:
         # Translate Greek search queries to English first
         try:
@@ -234,42 +228,41 @@ def search_ingredients():
             print(f"Failed to translate autocomplete query '{q}': {e}")
             q_en = q
 
-        conn = sqlite3.connect(NUTRITION_DB_PATH)
-        cur = conn.cursor()
-
-        # Sanitize query and prepare for prefix match
+        # Sanitize query and prepare for full-text search
         sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', q_en)
         words = [w for w in sanitized.split() if w]
         if not words:
-            conn.close()
             return jsonify({"results": []})
         
-        words[-1] = words[-1] + '*'
-        fts_query = ' '.join(words)
+        # Format as postgrest websearch query (e.g. "chicken & breast")
+        fts_query = " & ".join(words)
 
-        cur.execute(
-            """
-            SELECT f.name, f.protein_g, f.carbs_g, f.fat_g, f.energy_kcal, f.serving
-            FROM foods_fts fts
-            JOIN foods f ON f.rowid = fts.rowid
-            WHERE foods_fts MATCH ?
-            LIMIT 15
-            """,
-            (fts_query,),
-        )
-        rows = cur.fetchall()
-        conn.close()
-
+        # Query Supabase foods table using full-text search
+        response = analyzer._client.table("foods").select("name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(15).text_search("name", fts_query).execute()
+        
         results = []
-        for row in rows:
+        for row in response.data:
             results.append({
-                "name": row[0],
-                "protein": row[1],
-                "carbs": row[2],
-                "fats": row[3],
-                "calories": int(round(row[4])) if row[4] else 0,
-                "serving": row[5]
+                "name": row.get("name"),
+                "protein": row.get("protein_g") or 0.0,
+                "carbs": row.get("carbs_g") or 0.0,
+                "fats": row.get("fat_g") or 0.0,
+                "calories": int(round(row.get("energy_kcal") or 0)),
+                "serving": row.get("serving")
             })
+
+        # Fallback to ILIKE if no results found on FTS
+        if not results:
+            response = analyzer._client.table("foods").select("name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(15).ilike("name", f"%{q_en}%").execute()
+            for row in response.data:
+                results.append({
+                    "name": row.get("name"),
+                    "protein": row.get("protein_g") or 0.0,
+                    "carbs": row.get("carbs_g") or 0.0,
+                    "fats": row.get("fat_g") or 0.0,
+                    "calories": int(round(row.get("energy_kcal") or 0)),
+                    "serving": row.get("serving")
+                })
 
         return jsonify({"results": results})
     except Exception as e:
@@ -281,27 +274,22 @@ def lookup_barcode():
     if not barcode:
         return jsonify({"success": False, "error": "Missing barcode"}), 400
 
-    # First check if barcode exists in local DB
+    # First check if barcode exists in Supabase foods table
     try:
-        conn = sqlite3.connect(NUTRITION_DB_PATH)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT name, protein_g, carbs_g, fat_g, energy_kcal FROM foods WHERE id = ?",
-            (barcode,)
-        )
-        row = cur.fetchone()
-        conn.close()
-        if row:
+        analyzer = get_analyzer()
+        response = analyzer._client.table("foods").select("name, protein_g, carbs_g, fat_g, energy_kcal").limit(1).eq("id", barcode).execute()
+        if response.data:
+            row = response.data[0]
             return jsonify({
                 "success": True,
-                "name": row[0],
-                "protein": int(round(row[1])),
-                "carbs": int(round(row[2])),
-                "fats": int(round(row[3])),
-                "calories": int(round(row[4]))
+                "name": row.get("name"),
+                "protein": int(round(row.get("protein_g") or 0)),
+                "carbs": int(round(row.get("carbs_g") or 0)),
+                "fats": int(round(row.get("fat_g") or 0)),
+                "calories": int(round(row.get("energy_kcal") or 0))
             })
     except Exception as e:
-        print(f"Error checking local DB for barcode: {e}")
+        print(f"Error checking Supabase for barcode: {e}")
 
     # Fetch from Open Food Facts
     url = f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json"
@@ -320,8 +308,8 @@ def lookup_barcode():
                 fats = float(nutriments.get("fat_100g") or 0)
                 calories = float(nutriments.get("energy-kcal_100g") or nutriments.get("energy_100g", 0) / 4.184)
                 
-                # Cache it to local SQLite
-                save_barcode_to_local_db(barcode, name, protein, carbs, fats, calories)
+                # Cache it to Supabase
+                save_barcode_to_supabase(barcode, name, protein, carbs, fats, calories)
                 
                 return jsonify({
                     "success": True,

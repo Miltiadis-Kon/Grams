@@ -1,34 +1,22 @@
 """
-Nutritional analysis module using the OpenNutrition local database.
+Nutritional analysis module using the OpenNutrition dataset in Supabase.
 
-Downloads the OpenNutrition Foods TSV dataset on first use, indexes it into
-a local SQLite database with FTS5 full-text search, and provides ingredient-level
-macro lookups. Falls back to the Atwater formula when no match is found.
-
-Zero API keys required. Fully offline after initial dataset download.
+Zero API keys required for OpenNutrition dataset itself, but requires
+SUPABASE_URL and SUPABASE_KEY to be configured in the environment.
 """
 
 from __future__ import annotations
 
-import csv
 import json
 import logging
 import os
 import re
-import sqlite3
-import zipfile
 from typing import Optional
 
-import requests
+from translate import Translator
+from ingredient_parser import parse_ingredient
+from supabase import create_client, Client
 
-from config import (
-    DATA_DIR,
-    HTTP_MAX_RETRIES,
-    HTTP_TIMEOUT_SECONDS,
-    OPENNUTRITION_DB_PATH,
-    OPENNUTRITION_TSV_PATH,
-    OPENNUTRITION_ZIP_URL,
-)
 from database import MacroNutrients
 
 logger = logging.getLogger(__name__)
@@ -36,194 +24,19 @@ logger = logging.getLogger(__name__)
 
 class NutritionAnalyzer:
     """
-    Local nutritional analysis engine backed by the OpenNutrition dataset.
-
-    On first instantiation the dataset is downloaded (~50 MB zipped) and
-    indexed into a SQLite database with FTS5 for fast fuzzy lookups.
-    Subsequent runs reuse the existing SQLite index.
+    Nutritional analysis engine backed by the OpenNutrition dataset in Supabase.
     """
 
-    def __init__(self, data_dir: str = DATA_DIR) -> None:
-        self._data_dir = data_dir
-        self._db_path = OPENNUTRITION_DB_PATH
-        self._tsv_path = OPENNUTRITION_TSV_PATH
-        self._conn: Optional[sqlite3.Connection] = None
-
-        os.makedirs(self._data_dir, exist_ok=True)
-        self._ensure_database()
-
-    # ── Setup / Indexing ─────────────────────────────
-
-    def _ensure_database(self) -> None:
-        """Download and index the dataset if the SQLite DB doesn't exist."""
-        if os.path.exists(self._db_path):
-            self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            logger.info("OpenNutrition SQLite index loaded from %s", self._db_path)
-            return
-
-        # Download the dataset if TSV is missing
-        if not os.path.exists(self._tsv_path):
-            self._download_dataset()
-
-        # Build the SQLite index from the TSV
-        self._build_sqlite_index()
-        self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
-
-    def _download_dataset(self) -> None:
-        """Download and extract the OpenNutrition Foods ZIP archive."""
-        logger.info("Downloading OpenNutrition dataset from %s ...", OPENNUTRITION_ZIP_URL)
-
-        for attempt in range(1, HTTP_MAX_RETRIES + 1):
-            try:
-                resp = requests.get(
-                    OPENNUTRITION_ZIP_URL,
-                    timeout=HTTP_TIMEOUT_SECONDS * 4,  # larger timeout for big file
-                    stream=True,
-                )
-                resp.raise_for_status()
-
-                zip_path = os.path.join(self._data_dir, "opennutrition.zip")
-                with open(zip_path, "wb") as fh:
-                    for chunk in resp.iter_content(chunk_size=8192):
-                        fh.write(chunk)
-
-                # Extract the TSV from the ZIP
-                with zipfile.ZipFile(zip_path, "r") as zf:
-                    tsv_names = [n for n in zf.namelist() if n.endswith(".tsv")]
-                    if not tsv_names:
-                        raise FileNotFoundError("No TSV file found inside ZIP archive")
-                    # Extract the TSV to our expected path
-                    with zf.open(tsv_names[0]) as src, open(self._tsv_path, "wb") as dst:
-                        dst.write(src.read())
-
-                # Clean up the ZIP
-                os.remove(zip_path)
-                logger.info("Dataset extracted to %s", self._tsv_path)
-                return
-
-            except (requests.RequestException, IOError) as exc:
-                logger.warning(
-                    "Download attempt %d/%d failed: %s",
-                    attempt, HTTP_MAX_RETRIES, exc,
-                )
-
-        logger.error(
-            "Failed to download OpenNutrition dataset after %d attempts. "
-            "Nutrition lookups will fall back to Atwater estimation.",
-            HTTP_MAX_RETRIES,
-        )
-
-    def _build_sqlite_index(self) -> None:
-        """
-        Parse the OpenNutrition TSV and build a SQLite database with FTS5 index.
-
-        The TSV schema has columns: id, name, alternate_names, description, type,
-        source, serving, nutrition_100g, ean_13, labels, ...
-
-        The `nutrition_100g` column contains a JSON object with keys like:
-        protein, carbohydrates, total_fat, calories, etc. (values per 100g).
-        """
-        if not os.path.exists(self._tsv_path):
-            logger.warning("TSV file not found at %s - skipping index build", self._tsv_path)
-            return
-
-        temp_db_path = self._db_path + ".tmp"
-        if os.path.exists(temp_db_path):
-            try:
-                os.remove(temp_db_path)
-            except OSError:
-                pass
-
-        logger.info("Building SQLite index from %s into temporary file %s ...", self._tsv_path, temp_db_path)
-        conn = sqlite3.connect(temp_db_path)
-        cur = conn.cursor()
-
-        # Main table for nutritional data
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS foods (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                protein_g REAL DEFAULT 0,
-                carbs_g REAL DEFAULT 0,
-                fat_g REAL DEFAULT 0,
-                energy_kcal REAL DEFAULT 0,
-                serving TEXT
+    def __init__(self) -> None:
+        # Detect environment database configuration
+        self._supabase_url = os.environ.get("SUPABASE_URL")
+        self._supabase_key = os.environ.get("SUPABASE_KEY")
+        if not self._supabase_url or not self._supabase_key:
+            raise ValueError(
+                "SUPABASE_URL and SUPABASE_KEY environment variables are required!\n"
+                "Please specify them in your .env file or environment variables."
             )
-        """)
-
-        # FTS5 virtual table for fast text search
-        cur.execute("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS foods_fts
-            USING fts5(name, content=foods, content_rowid=rowid)
-        """)
-
-        rows_inserted = 0
-        parse_errors = 0
-
-        with open(self._tsv_path, "r", encoding="utf-8", errors="replace") as fh:
-            reader = csv.DictReader(fh, delimiter="\t")
-            if reader.fieldnames is None:
-                logger.error("TSV file has no header row")
-                conn.close()
-                return
-
-            batch = []
-            for row in reader:
-                food_id = (row.get("id") or "").strip()
-                food_name = (row.get("name") or "").strip()
-                if not food_name:
-                    continue
-                if not food_id:
-                    food_id = f"auto_{rows_inserted}"
-
-                serving_str = (row.get("serving") or "").strip()
-
-                # Parse the nutrition_100g JSON blob
-                nutrition_json = row.get("nutrition_100g", "{}")
-                protein = 0.0
-                carbs = 0.0
-                fat = 0.0
-                calories = 0.0
-
-                try:
-                    nutrition = json.loads(nutrition_json) if nutrition_json else {}
-                    protein = float(nutrition.get("protein", 0) or 0)
-                    carbs = float(nutrition.get("carbohydrates", 0) or 0)
-                    fat = float(nutrition.get("total_fat", 0) or 0)
-                    calories = float(nutrition.get("calories", 0) or 0)
-                except (json.JSONDecodeError, ValueError, TypeError):
-                    parse_errors += 1
-
-                batch.append((food_id, food_name, protein, carbs, fat, calories, serving_str))
-                rows_inserted += 1
-
-                if len(batch) >= 5000:
-                    cur.executemany(
-                        "INSERT OR IGNORE INTO foods VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        batch,
-                    )
-                    batch.clear()
-
-            # Insert remaining
-            if batch:
-                cur.executemany(
-                    "INSERT OR IGNORE INTO foods VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    batch,
-                )
-
-        # Populate the FTS index
-        cur.execute("INSERT INTO foods_fts(foods_fts) VALUES('rebuild')")
-        conn.commit()
-        conn.close()
-
-        # Atomically replace the final DB file
-        os.replace(temp_db_path, self._db_path)
-
-        if parse_errors:
-            logger.warning("Encountered %d JSON parse errors during indexing", parse_errors)
-        logger.info(
-            "SQLite index built: %d foods indexed at %s", rows_inserted, self._db_path
-        )
+        self._client: Client = create_client(self._supabase_url, self._supabase_key)
 
     # ── Public API ───────────────────────────────────
 
@@ -234,7 +47,6 @@ class NutritionAnalyzer:
         # Detect Greek characters
         if re.search(r'[\u0370-\u03ff\u1f00-\u1fff]', text):
             try:
-                from translate import Translator
                 if not hasattr(self, '_translator'):
                     self._translator = Translator(from_lang="el", to_lang="en")
                 if not hasattr(self, '_translation_cache'):
@@ -258,55 +70,62 @@ class NutritionAnalyzer:
 
     def lookup_food(self, query: str) -> Optional[MacroNutrients]:
         """
-        Search the OpenNutrition database for a food item by name.
+        Search the Supabase foods table for a food item by name.
 
         Returns the top match's macros, or None if no match found.
         """
-        if self._conn is None:
-            return None
-
         # Translate Greek queries to English first so they can match the English foods DB
         query_en = self._translate_if_greek(query)
 
+        sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_en)
+        sanitized = ' '.join(sanitized.split()).strip()
+        if not sanitized or not re.search(r'[a-zA-Z]', sanitized):
+            return None
+
         try:
-            cur = self._conn.cursor()
-            # Clean and sanitize the FTS5 query to avoid punctuation errors
-            sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_en)
-            sanitized = ' '.join(sanitized.split()).strip()
-            if not sanitized or not re.search(r'[a-zA-Z]', sanitized):
-                return None
+            # 1. Try exact match first
+            response = self._client.table("foods").select("protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).eq("name", query_en).execute()
+            if response.data:
+                row = response.data[0]
+                return self._row_to_macros(row, query_en, query)
 
-            # Try exact phrase match first, then token match
-            for fts_query in [f'"{sanitized}"', sanitized]:
-                cur.execute(
-                    """
-                    SELECT f.protein_g, f.carbs_g, f.fat_g, f.energy_kcal, f.serving
-                    FROM foods_fts fts
-                    JOIN foods f ON f.rowid = fts.rowid
-                    WHERE foods_fts MATCH ?
-                    ORDER BY rank
-                    LIMIT 1
-                    """,
-                    (fts_query,),
-                )
-                row = cur.fetchone()
-                if row:
-                    protein, carbs, fat, energy, serving = row
-                    macros = MacroNutrients(
-                        protein=protein,
-                        carbs=carbs,
-                        fats=fat,
-                        calories=int(energy) if energy else 0,
-                        serving=serving
-                    )
-                    logger.debug("Matched '%s' (translated from '%s') → P:%.1f C:%.1f F:%.1f Cal:%d",
-                                 query_en, query, protein, carbs, fat, energy)
-                    return macros
+            # 2. Try text search (FTS)
+            search_words = [w for w in sanitized.split() if w]
+            fts_query = " & ".join(search_words)
+            
+            response = self._client.table("foods").select("protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).text_search("name", fts_query).execute()
+            if response.data:
+                row = response.data[0]
+                return self._row_to_macros(row, query_en, query)
 
-        except sqlite3.OperationalError as exc:
-            logger.warning("FTS query failed for '%s': %s", query, exc)
+            # 3. Fallback to ILIKE substring matching
+            response = self._client.table("foods").select("protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).ilike("name", f"%{sanitized}%").execute()
+            if response.data:
+                row = response.data[0]
+                return self._row_to_macros(row, query_en, query)
+
+        except Exception as exc:
+            logger.warning("Supabase foods lookup failed for '%s': %s", query_en, exc)
 
         return None
+
+    def _row_to_macros(self, row: dict, query_en: str, query_orig: str) -> MacroNutrients:
+        protein = float(row.get("protein_g") or 0.0)
+        carbs = float(row.get("carbs_g") or 0.0)
+        fat = float(row.get("fat_g") or 0.0)
+        energy = float(row.get("energy_kcal") or 0.0)
+        serving = row.get("serving")
+        
+        macros = MacroNutrients(
+            protein=protein,
+            carbs=carbs,
+            fats=fat,
+            calories=int(round(energy)),
+            serving=serving
+        )
+        logger.debug("Matched '%s' (translated from '%s') → P:%.1f C:%.1f F:%.1f Cal:%d",
+                     query_en, query_orig, protein, carbs, fat, energy)
+        return macros
 
     def _extract_explicit_macros(self, description: str) -> Optional[MacroNutrients]:
         """Attempt to extract explicit macro-nutrients from text using regex patterns."""
@@ -382,13 +201,6 @@ class NutritionAnalyzer:
         total = MacroNutrients()
         matches = 0
 
-        # Import parse_ingredient here to ensure dependency is loaded
-        try:
-            from ingredient_parser import parse_ingredient
-        except ImportError:
-            logger.warning("ingredient-parser-nlp is not installed, unable to parse quantity structure")
-            return total
-
         for ing in ingredients:
             name_str = ing.get("name", "").strip()
             qty_str = ing.get("quantity", "").strip()
@@ -461,38 +273,33 @@ class NutritionAnalyzer:
         ingredients_list = []
         sentences = []
         has_header = False
-        try:
-            from ingredient_parser import parse_ingredient
-            ingredients_block, has_header = self._extract_ingredients_text(desc_clean)
-            sentences = self._split_ingredients(ingredients_block)
-            for sentence in sentences:
-                try:
-                    result = parse_ingredient(sentence)
-                except Exception as exc:
-                    logger.debug("NLP parse error for '%s': %s", sentence, exc)
-                    continue
+        ingredients_block, has_header = self._extract_ingredients_text(desc_clean)
+        sentences = self._split_ingredients(ingredients_block)
+        for sentence in sentences:
+            try:
+                result = parse_ingredient(sentence)
+            except Exception as exc:
+                logger.debug("NLP parse error for '%s': %s", sentence, exc)
+                continue
 
-                if not result.name:
-                    continue
+            if not result.name:
+                continue
 
-                name_str = result.name[0].text.strip()
-                amount_str = ""
-                if result.amount:
-                    amount_str = result.amount[0].text.strip()
+            name_str = result.name[0].text.strip()
+            amount_str = ""
+            if result.amount:
+                amount_str = result.amount[0].text.strip()
 
-                # If there is no ingredients header (e.g., parsing a raw transcript),
-                # ONLY keep items that have a parsed quantity. This prevents parsing
-                # random narrative text sentences as ingredients.
-                if not has_header and not amount_str:
-                    continue
+            # If there is no ingredients header (e.g., parsing a raw transcript),
+            # ONLY keep items that have a parsed quantity. This prevents parsing
+            # random narrative text sentences as ingredients.
+            if not has_header and not amount_str:
+                continue
 
-                ingredients_list.append({
-                    "name": name_str,
-                    "quantity": amount_str
-                })
-        except ImportError:
-            logger.warning("ingredient-parser-nlp is not installed, using basic parser")
-            return self._analyze_basic(desc_clean)
+            ingredients_list.append({
+                "name": name_str,
+                "quantity": amount_str
+            })
 
         # 1. Try direct regex macro extraction
         explicit = self._extract_explicit_macros(desc_clean)
@@ -812,8 +619,6 @@ class NutritionAnalyzer:
         return int((protein * 4) + (carbs * 4) + (fats * 9))
 
     def close(self) -> None:
-        """Close the SQLite connection."""
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        """No-op as Supabase client is connectionless HTTP."""
+        pass
 

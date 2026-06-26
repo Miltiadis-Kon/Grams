@@ -28,8 +28,8 @@ class RecipeDatabase:
     Thread-safe, Supabase-backed database.
     """
 
-    def __init__(self, db_path: str) -> None:
-        self._db_path = db_path
+    def __init__(self, table_name: str) -> None:
+        self._table_name = table_name
         self._lock = threading.Lock()
         
         if not HAS_SUPABASE:
@@ -46,12 +46,6 @@ class RecipeDatabase:
                 "SUPABASE_URL and SUPABASE_KEY environment variables are required!\n"
                 "Please specify them in your .env file or environment variables."
             )
-        
-        # Map table name based on filepath/identifier
-        if "not_added_recipes" in db_path:
-            self._table_name = "not_added_recipes"
-        else:
-            self._table_name = "recipes"
             
         logger.info("Initializing RecipeDatabase with Supabase backend for table: %s", self._table_name)
         self._client: Client = create_client(self._supabase_url, self._supabase_key)

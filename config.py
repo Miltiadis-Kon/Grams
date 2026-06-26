@@ -19,24 +19,20 @@ if os.path.exists(env_path):
                 os.environ[key.strip()] = val.strip()
 
 # ──────────────────────────────────────────────
+# Database & Table Names (Supabase Backend)
+# ──────────────────────────────────────────────
+RECIPES_TABLE = "recipes"
+NOT_ADDED_RECIPES_TABLE = "not_added_recipes"
+FOODS_TABLE = "foods"
+
+# ──────────────────────────────────────────────
 # Paths
 # ──────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_FILE_PATH = os.path.join(BASE_DIR, "database", "recipes_db.json")
-
-# OpenNutrition dataset
-OPENNUTRITION_DB_PATH = os.path.join(DATA_DIR, "opennutrition.db")
-OPENNUTRITION_TSV_PATH = os.path.join(DATA_DIR, "opennutrition_foods.tsv")
-OPENNUTRITION_ZIP_URL = (
-    "https://downloads.opennutrition.app/opennutrition-dataset-2025.1.zip"
-)
 
 # TikTok session cookies path (Netscape/JSON format)
 TIKTOK_COOKIES_PATH = os.path.join(BASE_DIR, "tiktok_cookies.json")
-
-# Database path for recipes that failed to parse (manual review list)
-NOT_ADDED_FILE_PATH = os.path.join(BASE_DIR, "database", "not_added_recipes.json")
 
 # Supadata API settings
 SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "sd_73e44d8358883c13baef75ed586f294a")
