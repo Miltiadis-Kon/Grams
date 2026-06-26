@@ -12,6 +12,7 @@ import logging
 import os
 import re
 from typing import Optional
+from functools import lru_cache
 
 from translate import Translator
 from ingredient_parser import parse_ingredient
@@ -68,6 +69,7 @@ class NutritionAnalyzer:
                 logger.warning("Translation failed for '%s': %s", text, exc)
         return text
 
+    @lru_cache(maxsize=2048)
     def lookup_food(self, query: str) -> Optional[MacroNutrients]:
         """
         Search the Supabase foods table for a food item by name.
