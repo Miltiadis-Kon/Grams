@@ -38,3 +38,4 @@ jobs:
           TIKTOK_PLAYLIST_URL: ${{ secrets.TIKTOK_PLAYLIST_URL }}
         run: |
           python sync_recipes.py
+          python match_ingredients.py
