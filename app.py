@@ -137,11 +137,10 @@ def save_barcode_to_supabase(barcode, name, protein, carbs, fats, calories):
 def index():
     return send_from_directory('interface', 'index.html')
 
-@app.route('/api/thumbnail')
-def get_thumbnail():
-    target_url = request.args.get('url')
-    if not target_url:
-        return jsonify({"error": "url parameter is required"}), 400
+from functools import lru_cache
+
+@lru_cache(maxsize=512)
+def _fetch_tiktok_thumbnail(target_url: str):
     try:
         import urllib.parse
         oembed_url = f"https://www.tiktok.com/oembed?url={urllib.parse.quote(target_url)}"
@@ -149,11 +148,21 @@ def get_thumbnail():
         res = requests.get(oembed_url, headers=headers, timeout=5)
         if res.status_code == 200:
             data = res.json()
-            thumb_url = data.get('thumbnail_url')
-            if thumb_url:
-                return redirect(thumb_url)
+            return data.get('thumbnail_url')
     except Exception as e:
         print(f"Error fetching thumbnail from oEmbed: {e}")
+    return None
+
+@app.route('/api/thumbnail')
+def get_thumbnail():
+    target_url = request.args.get('url')
+    if not target_url:
+        return jsonify({"error": "url parameter is required"}), 400
+        
+    thumb_url = _fetch_tiktok_thumbnail(target_url)
+    if thumb_url:
+        return redirect(thumb_url)
+        
     return send_from_directory('interface', 'baker.png')
 
 @app.route('/recipes_db.json')
