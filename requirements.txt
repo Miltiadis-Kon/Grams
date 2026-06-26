@@ -6,4 +6,4 @@ Flask>=3.0.0
 translate>=3.6.0
 supadata>=0.1.0
 supabase>=2.3.0
-
+gunicorn
