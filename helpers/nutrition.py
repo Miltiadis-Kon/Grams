@@ -219,9 +219,9 @@ class NutritionAnalyzer:
         matches = 0
 
         def process_ing(ing):
-            name_str = ing.get("name", "").strip()
-            qty_str = ing.get("quantity", "").strip()
-            ing_hash = ing.get("hash", "").strip()
+            name_str = (ing.get("name") or "").strip()
+            qty_str = (ing.get("quantity") or "").strip()
+            ing_hash = (ing.get("hash") or "").strip()
             if not name_str:
                 return None
 

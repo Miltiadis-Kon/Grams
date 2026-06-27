@@ -36,9 +36,9 @@ def calculate_recipe_macros_from_ingredients(ingredients):
     ingredients_breakdown = []
     
     def process_ingredient(ing):
-        name = ing.get('name', '').strip()
-        qty_str = ing.get('quantity', '').strip()
-        ing_hash = ing.get('hash', '').strip()
+        name = (ing.get('name') or '').strip()
+        qty_str = (ing.get('quantity') or '').strip()
+        ing_hash = (ing.get('hash') or '').strip()
         if not name:
             return None
             

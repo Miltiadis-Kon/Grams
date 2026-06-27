@@ -11,6 +11,8 @@ from server.services import (
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
+from flask import current_app
+
 @api_bp.route('/thumbnail')
 def get_thumbnail():
     target_url = request.args.get('url')
@@ -21,8 +23,7 @@ def get_thumbnail():
     if thumb_url:
         return redirect(thumb_url)
         
-    # Assuming 'interface' is served correctly or handle relative path
-    return send_from_directory('../interface', 'baker.png')
+    return current_app.send_static_file('baker.png')
 
 @api_bp.route('/recipes/calculate_macros', methods=['POST'])
 def calculate_macros():

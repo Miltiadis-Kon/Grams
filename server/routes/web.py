@@ -3,9 +3,11 @@ from server.services import db
 
 web_bp = Blueprint('web', __name__)
 
+from flask import current_app
+
 @web_bp.route('/')
 def index():
-    return send_from_directory('interface', 'index.html')
+    return current_app.send_static_file('index.html')
 
 @web_bp.route('/recipes_db.json')
 def get_db():
