@@ -1,5 +1,6 @@
 import re
 import os
+import time
 import json as _json
 import urllib.request
 import urllib.error
@@ -122,23 +123,38 @@ def parse_recipe_with_llm(text: str) -> dict:
             method="POST"
         )
 
-        try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                response_data = _json.loads(resp.read().decode("utf-8"))
-            choices = response_data.get("choices", [])
-            if not choices:
-                raise ValueError("Groq returned an empty choice list")
-            raw_text = choices[0].get("message", {}).get("content", "").strip()
-        except urllib.error.HTTPError as e:
+        for attempt in range(5):
             try:
-                err_body = e.read().decode("utf-8")
-            except Exception:
-                err_body = "(could not read body)"
-            logger.warning("Groq API parsing failed with HTTP Error %d (%s): %s. Falling back to local Ollama if available.", e.code, e.reason, err_body)
-            groq_api_key = None
-        except Exception as e:
-            logger.warning("Groq API parsing failed: %s. Falling back to local Ollama if available.", e)
-            groq_api_key = None
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    response_data = _json.loads(resp.read().decode("utf-8"))
+                choices = response_data.get("choices", [])
+                if not choices:
+                    raise ValueError("Groq returned an empty choice list")
+                raw_text = choices[0].get("message", {}).get("content", "").strip()
+                break # Success
+            except urllib.error.HTTPError as e:
+                try:
+                    err_body = e.read().decode("utf-8")
+                except Exception:
+                    err_body = "(could not read body)"
+                
+                if e.code == 429:
+                    match = re.search(r'try again in (?:(\d+)m)?([\d\.]+)s', err_body)
+                    if match:
+                        mins = int(match.group(1)) if match.group(1) else 0
+                        secs = float(match.group(2))
+                        sleep_time = mins * 60 + secs + 1.0 # +1s buffer
+                        logger.warning("Groq API Rate Limit 429 hit. Sleeping for %.1f seconds before retrying...", sleep_time)
+                        time.sleep(sleep_time)
+                        continue # Retry
+                
+                logger.warning("Groq API parsing failed with HTTP Error %d (%s): %s. Falling back to local Ollama if available.", e.code, e.reason, err_body)
+                groq_api_key = None
+                break
+            except Exception as e:
+                logger.warning("Groq API parsing failed: %s. Falling back to local Ollama if available.", e)
+                groq_api_key = None
+                break
 
     if not groq_api_key:
         import config

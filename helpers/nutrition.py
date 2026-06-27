@@ -116,6 +116,23 @@ class NutritionAnalyzer:
             if response.data:
                 row = response.data[0]
                 return self._row_to_macros(row, query_en, query)
+                
+            # 4. Fallback: try removing the first word (e.g. 'potato gnocchi' -> 'gnocchi')
+            words = sanitized.split()
+            if len(words) > 1:
+                fallback_query = " ".join(words[1:])
+                # 4.a Try exact match on fallback
+                response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).eq("name", fallback_query).execute()
+                if response.data:
+                    row = response.data[0]
+                    return self._row_to_macros(row, fallback_query, query)
+                
+                # 4.b Try text search on fallback
+                fallback_fts = " & ".join(fallback_query.split())
+                response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).text_search("name", fallback_fts).execute()
+                if response.data:
+                    row = response.data[0]
+                    return self._row_to_macros(row, fallback_query, query)
 
         except Exception as exc:
             logger.warning("Supabase foods lookup failed for '%s': %s", query_en, exc)
@@ -252,8 +269,10 @@ class NutritionAnalyzer:
 
             return (name_str, grams, scale, db_match)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            for res in executor.map(process_ing, ingredients):
+        # Run sequentially to avoid Windows socket exhaustion (WinError 10035) with httpx
+        results = [process_ing(ing) for ing in ingredients]
+        
+        for res in results:
                 if res is None:
                     continue
                 name_str, grams, scale, db_match = res

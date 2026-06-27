@@ -402,34 +402,19 @@ function getFiltered() {
   });
 }
 
-// Render dynamic homepage recipe lists
-function render() {
-  const filtered = getFiltered();
-  const popularContainer = document.getElementById('popularContainer');
-  const editorsChoiceContainer = document.getElementById('editorsChoiceContainer');
+let visibleEditorChoices = 20;
 
+function renderEditorsChoice() {
+  const filtered = getFiltered();
+  const editorsChoiceContainer = document.getElementById('editorsChoiceContainer');
+  
   if (filtered.length === 0) {
-    popularContainer.innerHTML = `<div style="padding: 24px; color: #748189; font-size:14px;">No recipes match the criteria.</div>`;
     editorsChoiceContainer.innerHTML = '';
     return;
   }
 
-  // Populate Popular Recipes (horizontal scroll)
-  // Display top 4 matching recipes in horizontal view
-  popularContainer.innerHTML = filtered.slice(0, 5).map(([id, r]) => {
-    return `
-      <div class="v701_928" onclick="openRecipeDetails('${id}')">
-        <div class="v701_929"></div>
-        <span class="v701_930">${r.name || 'Untitled'}</span>
-        <div class="v701_931" style="border-radius: 16px; background-color: var(--primary-20); overflow: hidden; position: relative;">
-          <img src="${getRecipeImageUrl(r)}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;" onerror="this.style.display='none'">
-        </div>
-      </div>
-    `;
-  }).join('');
-
   // Populate Editor's Choice list (vertical scroll)
-  editorsChoiceContainer.innerHTML = filtered.slice(0, 20).map(([id, r]) => {
+  editorsChoiceContainer.innerHTML = filtered.slice(0, visibleEditorChoices).map(([id, r]) => {
     return `
       <div class="editor-choice-card" onclick="openRecipeDetails('${id}')" style="display: flex; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.05); cursor: pointer; margin-bottom: 8px; border: 1px solid var(--primary-40);">
         <div style="width: 64px; height: 64px; border-radius: 12px; background-color: var(--primary-20); margin-right: 12px; flex-shrink: 0; overflow: hidden; position: relative;">
@@ -442,6 +427,36 @@ function render() {
       </div>
     `;
   }).join('');
+}
+
+// Render dynamic homepage recipe lists
+function render() {
+  visibleEditorChoices = 20; // reset on filter/search
+  const filtered = getFiltered();
+  const popularContainer = document.getElementById('popularContainer');
+  const editorsChoiceContainer = document.getElementById('editorsChoiceContainer');
+
+  if (filtered.length === 0) {
+    popularContainer.innerHTML = `<div style="padding: 24px; color: #748189; font-size:14px;">No recipes match the criteria.</div>`;
+    editorsChoiceContainer.innerHTML = '';
+    return;
+  }
+
+  // Populate Popular Recipes (horizontal scroll)
+  // Display top 5 matching recipes in horizontal view
+  popularContainer.innerHTML = filtered.slice(0, 5).map(([id, r]) => {
+    return `
+      <div class="v701_928" onclick="openRecipeDetails('${id}')">
+        <div class="v701_929"></div>
+        <span class="v701_930">${r.name || 'Untitled'}</span>
+        <div class="v701_931" style="border-radius: 16px; background-color: var(--primary-20); overflow: hidden; position: relative;">
+          <img src="${getRecipeImageUrl(r)}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;" onerror="this.style.display='none'">
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  renderEditorsChoice();
 }
 
 // Switch SPA views
@@ -1609,6 +1624,21 @@ async function initApp() {
   if (searchInput) {
     searchInput.addEventListener('input', () => {
       render();
+    });
+  }
+  
+  // Attach infinite scroll listener for Editor's Choice list
+  const viewHome = document.getElementById('view-home');
+  if (viewHome) {
+    viewHome.addEventListener('scroll', function(e) {
+      const el = e.target;
+      if (el.scrollHeight - el.scrollTop - el.clientHeight < 150) {
+        const filtered = getFiltered();
+        if (visibleEditorChoices < filtered.length) {
+          visibleEditorChoices += 20;
+          renderEditorsChoice();
+        }
+      }
     });
   }
   

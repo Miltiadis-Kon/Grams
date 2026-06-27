@@ -14,20 +14,20 @@ def fetch_groq_whisper_transcript(video_url: str) -> str:
 
     # Create a temporary directory to store the extracted audio
     with tempfile.TemporaryDirectory() as tmpdir:
-        audio_path = os.path.join(tmpdir, "extracted_audio.mp3")
+        audio_path = os.path.join(tmpdir, "extracted_audio.mp4")
         
-        # Use yt-dlp to download only the audio track silently
+        # Use yt-dlp to download the smallest video track silently (since ffmpeg is not installed to extract audio)
+        # Groq Whisper accepts .mp4 natively
         ydl_cmd = [
             "yt-dlp",
-            "-vn", 
+            "-f", "worst[ext=mp4]", # Get smallest mp4 to save bandwidth
             "--no-playlist",
-            "-x", "--audio-format", "mp3",
             "-o", audio_path,
             video_url
         ]
         
         try:
-            logger.info("Extracting audio from %s using yt-dlp...", video_url)
+            logger.info("Extracting audio/video from %s using yt-dlp...", video_url)
             subprocess.run(ydl_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"yt-dlp failed to download audio: {e}")
@@ -38,9 +38,9 @@ def fetch_groq_whisper_transcript(video_url: str) -> str:
         # Read the file bytes to build a multipart form request
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
         
-        logger.info("Sending audio to Groq Whisper API for transcription...")
+        logger.info("Sending mp4 to Groq Whisper API for transcription...")
         with open(audio_path, "rb") as f:
-            files = {"file": (os.path.basename(audio_path), f, "audio/mp3")}
+            files = {"file": (os.path.basename(audio_path), f, "video/mp4")}
             data = {"model": "whisper-large-v3", "response_format": "json"}
             
             response = requests.post(
