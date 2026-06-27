@@ -82,6 +82,7 @@ class Recipe:
     description: str
     macros: MacroNutrients = field(default_factory=MacroNutrients)
     ingredients: list[dict[str, str]] = field(default_factory=list)
+    instructions: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     added_on: str = ""
 
@@ -98,6 +99,7 @@ class Recipe:
             "description": self.description,
             "macros": self.macros.to_dict(),
             "ingredients": self.ingredients,
+            "instructions": self.instructions,
             "tags": self.tags,
             "added_on": self.added_on,
         }
@@ -110,6 +112,7 @@ class Recipe:
             description=data.get("description", ""),
             macros=MacroNutrients.from_dict(data.get("macros", {})),
             ingredients=data.get("ingredients", []),
+            instructions=data.get("instructions", []),
             tags=data.get("tags", []),
             added_on=data.get("added_on", ""),
         )

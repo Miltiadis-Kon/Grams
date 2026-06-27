@@ -15,7 +15,7 @@ from database import RecipeDatabase
 from .ingester import TikTokIngester
 from .nutrition import NutritionAnalyzer
 from .query import QueryInterface
-from .sync import SyncPipeline
+
 from .tagger import AutoTagger
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,8 @@ class RecipeEngine:
         self._not_added_database = RecipeDatabase(not_added_table)
         self._nutrition = NutritionAnalyzer()
         self._tagger = AutoTagger()
-        self._sync = SyncPipeline(self._database, self._not_added_database, self._nutrition, self._tagger)
+        from recipe_processor.pipeline import RecipePipeline
+        self._sync = RecipePipeline(self._database, self._not_added_database, self._nutrition, self._tagger)
         self._query = QueryInterface(self._database)
         self._ingester = TikTokIngester(self._sync)
 

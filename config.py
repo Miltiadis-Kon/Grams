@@ -34,8 +34,8 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 # TikTok session cookies path (Netscape/JSON format)
 TIKTOK_COOKIES_PATH = os.path.join(BASE_DIR, "tiktok_cookies.json")
 
-# Supadata API settings
-SUPADATA_API_KEY = os.environ.get("SUPADATA_API_KEY", "sd_73e44d8358883c13baef75ed586f294a")
+# Groq API settings
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # Ollama settings (local LLM used as fallback for recipe parsing via transcript)
 OLLAMA_BASE_URL = "http://localhost:11434"
