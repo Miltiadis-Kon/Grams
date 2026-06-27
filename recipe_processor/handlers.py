@@ -55,7 +55,8 @@ class DescriptionParseHandler(BaseHandler):
                 if llm_ingredients:
                     context.ingredients = sanitize_ingredients(llm_ingredients)
                     context.instructions = llm_result.get("instructions", [])
-                    context.description = f"{desc_to_parse}\n\n[LLM Parsed Ingredients & Instructions]"
+                    instructions_text = "\n".join([f"{idx+1}. {step}" for idx, step in enumerate(context.instructions)])
+                    context.description = f"{desc_to_parse}\n\n[LLM Parsed Instructions]\n{instructions_text}"
                     logger.info("LLM identified recipe in description for '%s' with %d ingredients and %d instructions.", context.recipe_id, len(context.ingredients), len(context.instructions))
             else:
                 logger.info("LLM determined description for '%s' is NOT a recipe", context.recipe_id)
@@ -113,7 +114,8 @@ class TranscriptParseHandler(BaseHandler):
                 if llm_ingredients:
                     context.ingredients = sanitize_ingredients(llm_ingredients)
                     context.instructions = llm_result.get("instructions", [])
-                    context.description = f"{context.description}\n\n[LLM Parsed Ingredients & Instructions]"
+                    instructions_text = "\n".join([f"{idx+1}. {step}" for idx, step in enumerate(context.instructions)])
+                    context.description = f"{context.description}\n\n[LLM Parsed Instructions]\n{instructions_text}"
                     logger.info("LLM identified recipe from transcript '%s' with %d ingredient(s) and %d instruction(s)", context.name, len(context.ingredients), len(context.instructions))
             else:
                 logger.info("LLM determined transcript for '%s' is NOT a recipe. Routing to not-added.", context.recipe_id)

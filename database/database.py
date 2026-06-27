@@ -112,7 +112,8 @@ class RecipeDatabase:
             "macros": recipe_data.get("macros", {}),
             "ingredients": recipe_data.get("ingredients", []),
             "tags": recipe_data.get("tags", []),
-            "added_on": recipe_data.get("added_on")
+            "added_on": recipe_data.get("added_on"),
+            "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
         }
 
         with self._lock:
