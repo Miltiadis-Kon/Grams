@@ -1,0 +1,42 @@
+name: Reprocess Recipes
+
+on:
+  schedule:
+    # Run every 6 hours (adjust as needed)
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: 'Number of recipes to process'
+        required: true
+        default: '30'
+
+jobs:
+  reprocess:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Optionally install supabase if it's missing in requirements.txt
+          pip install supabase python-dotenv
+
+      - name: Run reprocessing batch
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          BATCH_SIZE="${{ github.event.inputs.batch_size || '30' }}"
+          python scripts/reprocess_all.py --batch-size $BATCH_SIZE

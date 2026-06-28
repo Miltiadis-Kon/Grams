@@ -51,24 +51,34 @@ def main():
     # We want to skip DeltaCheckHandler and go straight to DescriptionParseHandler.
     bypass_head = pipeline._head._next_handler
     
-    logger.info("Fetching all recipes to reprocess...")
+    import argparse
+    parser = argparse.ArgumentParser(description="Reprocess recipes in the database.")
+    parser.add_argument("--batch-size", type=int, default=0, help="Number of recipes to process. If 0, processes all.")
+    args = parser.parse_args()
+
+    logger.info("Fetching recipes to reprocess...")
     all_recipes = []
-    page_size = 1000
-    offset = 0
-    while True:
-        res = client.table(RECIPES_TABLE).select("*").range(offset, offset + page_size - 1).execute()
-        if not res.data:
-            break
+    
+    if args.batch_size > 0:
+        res = client.table(RECIPES_TABLE).select("*").order("updated_at", nullsfirst=True).limit(args.batch_size).execute()
         all_recipes.extend(res.data)
-        if len(res.data) < page_size:
-            break
-        offset += page_size
+    else:
+        page_size = 1000
+        offset = 0
+        while True:
+            res = client.table(RECIPES_TABLE).select("*").range(offset, offset + page_size - 1).execute()
+            if not res.data:
+                break
+            all_recipes.extend(res.data)
+            if len(res.data) < page_size:
+                break
+            offset += page_size
 
     logger.info("Starting reprocessing of %d recipes...", len(all_recipes))
     reprocessed_count = 0
     
     for idx, row in enumerate(all_recipes):
-        if idx > 0 and idx % 30 == 0:
+        if args.batch_size == 0 and idx > 0 and idx % 30 == 0:
             logger.info("Processed %d recipes. Sleeping for 1 hour to prevent API limits...", idx)
             time.sleep(3600)
             
