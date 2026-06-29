@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 from supabase import create_client
 
 def main():
-    load_dotenv(r'c:\Users\M\Desktop\repos\Grams\.env')
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(script_dir)
+    env_path = os.path.join(root_dir, ".env")
+    load_dotenv(env_path)
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
     if not url or not key:
@@ -27,7 +30,7 @@ def main():
     print("Foods table cleared.")
     
     csv.field_size_limit(10**7)
-    tsv_path = r'c:\Users\M\Desktop\repos\Grams\data\opennutrition_foods.tsv'
+    tsv_path = os.path.join(root_dir, 'data', 'opennutrition_foods.tsv')
     
     batch = []
     batch_size = 500

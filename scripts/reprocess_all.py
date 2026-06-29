@@ -20,18 +20,23 @@ from recipe_processor.pipeline import RecipePipeline
 from recipe_processor.context import RecipeContext
 import config
 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+root_dir = os.path.dirname(script_dir)
+log_path = os.path.join(root_dir, "reprocess.log")
+
 logging.basicConfig(
     level=logging.INFO, 
     format="%(asctime)s | %(levelname)-7s | %(message)s",
     handlers=[
-        logging.FileHandler(r"c:\Users\M\Desktop\repos\Grams\reprocess.log", encoding="utf-8"),
+        logging.FileHandler(log_path, encoding="utf-8"),
         logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
 
 def main():
-    load_dotenv(r'c:\Users\M\Desktop\repos\Grams\.env')
+    env_path = os.path.join(root_dir, ".env")
+    load_dotenv(env_path)
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
     if not url or not key:

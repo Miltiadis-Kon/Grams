@@ -36,7 +36,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           BATCH_SIZE="${{ github.event.inputs.batch_size || '30' }}"
           python scripts/reprocess_all.py --batch-size $BATCH_SIZE
