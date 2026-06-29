@@ -118,6 +118,12 @@
     <!-- Will be loaded dynamically from account/index.html -->
   </div>
 
+  <!-- ==================== VIEW: MANUAL ==================== -->
+  <div id="view-manual" class="app-view view-manual-container" style="display: none; padding: 24px 24px 80px;">
+    <!-- Will be loaded dynamically from manual/index.html -->
+  </div>
+
+
   <!-- ==================== STICKY BOTTOM TAB NAVIGATION ==================== -->
   <div class="bottom-nav-bar">
     <div class="nav-item active" id="nav-home" onclick="switchView('home')">
@@ -501,6 +507,9 @@ function switchView(viewName) {
     document.getElementById('nav-search').classList.add('active');
     renderSearchTags();
     runSearchFilter();
+  } else if (viewName === 'manual') {
+    document.getElementById('view-manual').style.display = 'block';
+    initManualCheck();
   }
 }
 
@@ -824,7 +833,12 @@ function openRecipeDetails(id) {
 
   // Load instructions steps
   const stepsList = document.getElementById('detailInsList');
-  const steps = getSteps(r.description);
+  let steps = [];
+  if (r.instructions && Array.isArray(r.instructions) && r.instructions.length > 0) {
+    steps = r.instructions.map((text, idx) => ({ num: idx + 1, text }));
+  } else {
+    steps = getSteps(r.description);
+  }
   if (steps.length > 0) {
     stepsList.innerHTML = steps.map(s => `
       <div style="background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 14px; padding: 16px; text-align: left; width: 100% !important;">
@@ -1593,7 +1607,8 @@ async function loadSubViews() {
   const views = [
     { id: 'view-home', url: 'home/index.html', bodyClass: '.v701_909' },
     { id: 'view-detail', url: 'main/index.html', bodyClass: '.v701_949' },
-    { id: 'view-account', url: 'account/index.html', bodyClass: '.v701_1067' }
+    { id: 'view-account', url: 'account/index.html', bodyClass: '.v701_1067' },
+    { id: 'view-manual', url: 'manual/index.html', bodyClass: '.view-manual-container' }
   ];
   for (const view of views) {
     try {
@@ -1613,6 +1628,401 @@ async function loadSubViews() {
       console.error(`Error loading sub-view for ${view.id}:`, err);
     }
   }
+}
+
+// ==================== MANUAL CHECK VIEWS & FUNCTIONS ====================
+let failedRecipes = {};
+let manualRecalcDebounce = null;
+
+// Fetch and render failed recipes list
+async function initManualCheck() {
+  const container = document.getElementById('manualFailedRecipesContainer');
+  if (!container) return;
+  
+  container.innerHTML = `<div style="text-align: center; padding: 20px; color: #748189; font-size:14px;">Loading failed recipes...</div>`;
+  
+  try {
+    const res = await fetch('/api/manual_check/recipes');
+    failedRecipes = await res.json();
+    
+    const entries = Object.entries(failedRecipes);
+    
+    // Update badge count
+    const badge = document.getElementById('manualCheckBadge');
+    if (badge) {
+      badge.textContent = entries.length;
+      badge.style.display = entries.length > 0 ? 'inline-block' : 'none';
+    }
+    
+    if (entries.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 40px 20px; color: #748189; background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 16px;">
+          <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom: 8px; color: var(--primary-100);"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          <p style="font-size: 14px; font-weight: 700; color: #0a2533; font-family: 'Outfit';">All Caught Up!</p>
+          <p style="font-size: 12px; margin-top: 4px;">No failed recipes require manual review at this time.</p>
+        </div>
+      `;
+      return;
+    }
+    
+    container.innerHTML = entries.map(([id, r]) => {
+      const addedDate = r.added_on ? r.added_on.split(' ')[0] : 'Unknown date';
+      const handle = getCreatorHandle(r.url);
+      return `
+        <div style="background: #fff; border: 1px solid var(--primary-40); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 4px 12px rgba(10,37,51,0.03);">
+          <div>
+            <h4 style="font-family: 'Outfit'; font-size: 15px; font-weight: 700; color: #0a2533; margin: 0; line-height: 1.3;">${r.name || 'Failed TikTok Recipe'}</h4>
+            <span style="font-size: 11px; color: #748189; margin-top: 4px; display: inline-block;">${handle} • Fetch Date: ${addedDate}</span>
+          </div>
+          <button onclick="openFailedRecipeReview('${id}')" style="width: 100%; border: none; outline: none; background: var(--primary-100); color: white; border-radius: 12px; padding: 10px; font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.2s;">
+            Review Details
+          </button>
+        </div>
+      `;
+    }).join('');
+  } catch(e) {
+    console.error("Error loading failed recipes:", e);
+    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #b91c1c; font-size:13px;">Failed to load reviews. Check server status.</div>`;
+  }
+}
+
+// Open failed recipe review details form
+function openFailedRecipeReview(id) {
+  const r = failedRecipes[id];
+  if (!r) return;
+  
+  document.getElementById('manualReviewId').value = id;
+  document.getElementById('manualReviewName').value = r.name || 'Untitled Recipe';
+  document.getElementById('manualReviewDesc').value = r.description || '';
+  document.getElementById('manualReviewTags').value = (r.tags || []).join(', ');
+  
+  // Set original transcript
+  document.getElementById('manualOrigDesc').textContent = r.description || 'No transcript or description available.';
+  
+  // Set TikTok link
+  const linkEl = document.getElementById('manualOrigUrl');
+  if (r.url) {
+    linkEl.href = r.url;
+    linkEl.style.display = 'block';
+  } else {
+    linkEl.style.display = 'none';
+  }
+  
+  // Clear and populate ingredients list
+  const list = document.getElementById('manualIngEditList');
+  list.innerHTML = '';
+  
+  const ingredients = r.ingredients || [];
+  if (ingredients.length > 0) {
+    ingredients.forEach(i => addManualIngredientRow(i.name, i.quantity));
+  } else {
+    addManualIngredientRow();
+  }
+  
+  // Try to parse instructions if stored as array or guess from description
+  const instructionsBox = document.getElementById('manualReviewInstructions');
+  if (r.instructions && Array.isArray(r.instructions) && r.instructions.length > 0) {
+    instructionsBox.value = r.instructions.join('\n');
+  } else {
+    // Attempt to guess from transcript steps
+    const guessedSteps = getSteps(r.description);
+    if (guessedSteps.length > 0) {
+      instructionsBox.value = guessedSteps.map(s => s.text).join('\n');
+    } else {
+      instructionsBox.value = '';
+    }
+  }
+  
+  // Hide list and show review form
+  document.getElementById('manualListState').style.display = 'none';
+  document.getElementById('manualReviewState').style.display = 'block';
+  
+  triggerManualMacroRecalculation();
+}
+
+// Add ingredient row to manual review page
+function addManualIngredientRow(name='', qtyStr='') {
+  const parsed = parseQtyString(qtyStr);
+  const list = document.getElementById('manualIngEditList');
+  const row = document.createElement('div');
+  row.className = 'ing-edit-row-container';
+  row.style = 'display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--primary-40); padding-bottom: 8px; margin-bottom: 8px;';
+  
+  row.innerHTML = `
+    <div class="ing-edit-row" style="display: flex; gap: 8px; align-items: center;">
+      <div class="autocomplete-container" style="flex: 1; position: relative;">
+        <input type="text" class="ing-name-input" placeholder="Ingredient name" value="${name.replace(/"/g,'&quot;')}" autocomplete="off" required style="width: 100%;">
+        <div class="autocomplete-dropdown" style="display: none; position: absolute; top:100%; left:0; right:0; background:white; z-index:1000; max-height:160px; overflow-y:auto; border: 1px solid var(--primary-40); border-radius:12px;"></div>
+      </div>
+      <input type="number" step="any" class="ing-qty-num" placeholder="Qty" value="${parsed.num}" style="width: 65px; padding: 12px 6px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 14px;" required>
+      <select class="ing-qty-unit" style="width: 100px; padding: 12px 6px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 13px;">
+        <option value="g" ${parsed.unit === 'g' ? 'selected' : ''}>g</option>
+        <option value="tsp" ${parsed.unit === 'tsp' ? 'selected' : ''}>tsp (5g)</option>
+        <option value="tbsp" ${parsed.unit === 'tbsp' ? 'selected' : ''}>tbsp (15g)</option>
+        <option value="cup" ${parsed.unit === 'cup' ? 'selected' : ''}>cup (240g)</option>
+        <option value="serving" ${parsed.unit === 'serving' ? 'selected' : ''}>serving</option>
+        <option value="unit" ${parsed.unit === 'unit' ? 'selected' : ''}>unit</option>
+        <option value="oz" ${parsed.unit === 'oz' ? 'selected' : ''}>oz</option>
+        <option value="ml" ${parsed.unit === 'ml' ? 'selected' : ''}>ml</option>
+      </select>
+      <button type="button" class="ing-del" style="background:#fee2e2; border:none; border-radius:10px; width:36px; height:36px; cursor:pointer; color:#991b1b; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="ing-row-macros" style="font-size: 11px; color: var(--primary-100); padding-left: 4px; font-weight: 600;"></div>
+  `;
+  
+  list.appendChild(row);
+  
+  const input = row.querySelector('.ing-name-input');
+  const qtyNumInput = row.querySelector('.ing-qty-num');
+  const qtyUnitSelect = row.querySelector('.ing-qty-unit');
+  const dropdown = row.querySelector('.autocomplete-dropdown');
+  const delBtn = row.querySelector('.ing-del');
+  
+  input.addEventListener('input', triggerManualMacroRecalculation);
+  qtyNumInput.addEventListener('input', triggerManualMacroRecalculation);
+  qtyUnitSelect.addEventListener('change', triggerManualMacroRecalculation);
+  
+  delBtn.addEventListener('click', () => {
+    row.remove();
+    triggerManualMacroRecalculation();
+  });
+  
+  if (name) {
+    fetch(`/api/ingredients/search?q=${encodeURIComponent(name)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.results && data.results.length > 0) {
+          const match = data.results.find(x => x.name.toLowerCase() === name.toLowerCase()) || data.results[0];
+          if (match && match.serving) {
+            const opt = qtyUnitSelect.querySelector('option[value="serving"]');
+            opt.textContent = getServingText(match.serving);
+          }
+        }
+      });
+  }
+
+  let debounceTimeout = null;
+  input.addEventListener('input', function() {
+    const q = input.value.trim();
+    clearTimeout(debounceTimeout);
+    if (q.length < 2) {
+      dropdown.style.display = 'none';
+      return;
+    }
+    
+    debounceTimeout = setTimeout(() => {
+      fetch(`/api/ingredients/search?q=${encodeURIComponent(q)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.results && data.results.length > 0) {
+            dropdown.innerHTML = data.results.map(item => {
+              return `
+                <div class="autocomplete-item" data-name="${item.name.replace(/"/g,'&quot;')}" data-serving="${(item.serving || '').replace(/"/g,'&quot;')}" style="padding:10px; cursor:pointer; font-size:12px; border-bottom: 1px solid var(--primary-40); display:flex; justify-content:space-between;">
+                  <span style="font-weight:600; color:#0a2533;">${item.name}</span>
+                  <span style="color:var(--neutral-gray2);">P:${item.protein.toFixed(0)}g Cal:${item.calories}</span>
+                </div>
+              `;
+            }).join('');
+            dropdown.style.display = 'block';
+            
+            dropdown.querySelectorAll('.autocomplete-item').forEach(el => {
+              el.addEventListener('click', function() {
+                input.value = el.getAttribute('data-name');
+                const servingVal = el.getAttribute('data-serving');
+                if (servingVal) {
+                  const opt = qtyUnitSelect.querySelector('option[value="serving"]');
+                  opt.textContent = getServingText(servingVal);
+                  qtyUnitSelect.value = 'serving';
+                }
+                dropdown.style.display = 'none';
+                triggerManualMacroRecalculation();
+              });
+            });
+          } else {
+            dropdown.style.display = 'none';
+          }
+        })
+        .catch(err => {
+          console.error("Autocomplete search error:", err);
+          dropdown.style.display = 'none';
+        });
+    }, 200);
+  });
+  
+  document.addEventListener('click', function(e) {
+    if (!row.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+  
+  triggerManualMacroRecalculation();
+}
+
+// Trigger macro recalculation for manual check ingredients
+function triggerManualMacroRecalculation() {
+  clearTimeout(manualRecalcDebounce);
+  manualRecalcDebounce = setTimeout(() => {
+    const ingredients = [...document.querySelectorAll('#manualIngEditList .ing-edit-row-container')].map(row => {
+      const nameInput = row.querySelector('.ing-name-input');
+      const numInput = row.querySelector('.ing-qty-num');
+      const unitSelect = row.querySelector('.ing-qty-unit');
+      
+      const num = numInput.value.trim();
+      const unit = unitSelect.value;
+      const quantity = `${num} ${unit === 'serving' ? 'servings' : (unit === 'unit' ? 'units' : unit)}`;
+      
+      return { name: nameInput.value.trim(), quantity: quantity.trim() };
+    }).filter(i => i.name);
+    
+    if (ingredients.length === 0) {
+      document.getElementById('manualProtein').textContent = '0g';
+      document.getElementById('manualCarbs').textContent = '0g';
+      document.getElementById('manualFats').textContent = '0g';
+      document.getElementById('manualCalories').textContent = '0';
+      return;
+    }
+    
+    fetch('/api/recipes/calculate_macros', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredients })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) {
+          document.getElementById('manualProtein').textContent = `${Math.round(data.protein)}g`;
+          document.getElementById('manualCarbs').textContent = `${Math.round(data.carbs)}g`;
+          document.getElementById('manualFats').textContent = `${Math.round(data.fats)}g`;
+          document.getElementById('manualCalories').textContent = `${Math.round(data.calories)}`;
+          
+          if (data.ingredients) {
+            data.ingredients.forEach((ingData, idx) => {
+              const row = document.querySelectorAll('#manualIngEditList .ing-edit-row-container')[idx];
+              if (row) {
+                const macroDisplay = row.querySelector('.ing-row-macros');
+                if (macroDisplay) {
+                  macroDisplay.textContent = `Macros: P: ${ingData.protein}g | C: ${ingData.carbs}g | F: ${ingData.fats}g | ${ingData.calories} kcal`;
+                }
+              }
+            });
+          }
+        }
+      })
+      .catch(err => console.error("Macro recalculation error:", err));
+  }, 300);
+}
+
+// Approve and promote the recipe to main DB
+async function saveManualApprove(e) {
+  e.preventDefault();
+  const id = document.getElementById('manualReviewId').value;
+  const name = document.getElementById('manualReviewName').value;
+  const description = document.getElementById('manualReviewDesc').value;
+  const tags = document.getElementById('manualReviewTags').value.split(',').map(t => t.trim()).filter(Boolean);
+  
+  const ingredients = [...document.querySelectorAll('#manualIngEditList .ing-edit-row-container')].map(row => {
+    const nameInput = row.querySelector('.ing-name-input');
+    const numInput = row.querySelector('.ing-qty-num');
+    const unitSelect = row.querySelector('.ing-qty-unit');
+    
+    const num = numInput.value.trim();
+    const unit = unitSelect.value;
+    const quantity = `${num} ${unit === 'serving' ? 'servings' : (unit === 'unit' ? 'units' : unit)}`;
+    
+    return { name: nameInput.value.trim(), quantity: quantity.trim() };
+  }).filter(i => i.name);
+
+  const instructionsText = document.getElementById('manualReviewInstructions').value;
+  const instructions = instructionsText.split('\n').map(s => s.trim()).filter(Boolean);
+
+  const orig = failedRecipes[id] || {};
+
+  const payload = {
+    id: id,
+    name: name,
+    url: orig.url || '',
+    description: description,
+    ingredients: ingredients,
+    instructions: instructions,
+    tags: tags
+  };
+
+  try {
+    const res = await fetch('/api/manual_check/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert("Recipe successfully approved and promoted to the main database!");
+      // Reload main database so search contains it
+      await loadDB();
+      // Reset manual check list state
+      goBackToManualList();
+      await initManualCheck();
+      updateManualBadgeOnly();
+    } else {
+      alert("Error promoting recipe: " + (result.error || "Unknown error"));
+    }
+  } catch(err) {
+    console.error("Approve manual recipe error:", err);
+    alert("Failed to approve recipe. Check server connection.");
+  }
+}
+
+// Discard/Delete failed recipe
+async function saveManualDelete() {
+  const id = document.getElementById('manualReviewId').value;
+  if (!confirm("Are you sure you want to discard this failed recipe? This will delete it permanently.")) {
+    return;
+  }
+  
+  try {
+    const res = await fetch('/api/manual_check/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const result = await res.json();
+    if (result.success) {
+      goBackToManualList();
+      await initManualCheck();
+      updateManualBadgeOnly();
+    } else {
+      alert("Error deleting: " + (result.error || "Unknown error"));
+    }
+  } catch(err) {
+    console.error("Delete failed recipe error:", err);
+    alert("Failed to delete recipe. Check server connection.");
+  }
+}
+
+// Update the badge counter on the profile tab without rendering the list
+async function updateManualBadgeOnly() {
+  try {
+    const res = await fetch('/api/manual_check/recipes');
+    const data = await res.json();
+    const count = Object.keys(data).length;
+    const badge = document.getElementById('manualCheckBadge');
+    if (badge) {
+      badge.textContent = count;
+      badge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+  } catch(e) {
+    console.error("Error updating manual review badge:", e);
+  }
+}
+
+function goBackToManualList() {
+  document.getElementById('manualReviewState').style.display = 'none';
+  document.getElementById('manualListState').style.display = 'block';
+}
+
+function goBackToAccount() {
+  switchView('account');
 }
 
 // Initialize application
@@ -1643,6 +2053,7 @@ async function initApp() {
   }
   
   await loadDB();
+  updateManualBadgeOnly();
   
   // Fade out loading screen
   const loadingScreen = document.getElementById('app-loading-screen');

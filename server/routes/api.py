@@ -3,6 +3,7 @@ import requests
 from flask import Blueprint, jsonify, request, send_from_directory, redirect
 from server.services import (
     db, 
+    not_added_db,
     get_analyzer, 
     calculate_recipe_macros_from_ingredients, 
     save_barcode_to_supabase, 
@@ -190,3 +191,92 @@ def lookup_barcode():
         print(f"Error fetching from Open Food Facts: {e}")
 
     return jsonify({"success": False, "error": "Product not found"}), 404
+
+@api_bp.route('/manual_check/recipes', methods=['GET'])
+def get_failed_recipes():
+    try:
+        data = not_added_db.get_all()
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route('/manual_check/recipes/<recipe_id>', methods=['GET'])
+def get_failed_recipe(recipe_id):
+    try:
+        recipe = not_added_db.get(recipe_id)
+        if not recipe:
+            return jsonify({"error": "Failed recipe not found"}), 404
+        return jsonify(recipe)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route('/manual_check/approve', methods=['POST'])
+def approve_failed_recipe():
+    try:
+        req_data = request.json or {}
+        recipe_id = req_data.get('id')
+        if not recipe_id:
+            return jsonify({"error": "Missing recipe ID"}), 400
+
+        name = req_data.get('name', 'Untitled')
+        url = req_data.get('url', '')
+        description = req_data.get('description', '')
+        ingredients = req_data.get('ingredients', [])
+        instructions = req_data.get('instructions', [])
+        tags = req_data.get('tags', [])
+
+        # Ensure instructions is a list of strings
+        if isinstance(instructions, str):
+            instructions = [s.strip() for s in instructions.split('\n') if s.strip()]
+
+        # Calculate macros from ingredients list
+        calc_result = calculate_recipe_macros_from_ingredients(ingredients)
+
+        from helpers.tagger import AutoTagger
+        from database.models import Recipe, MacroNutrients
+
+        # Create Recipe model object
+        recipe_obj = Recipe(
+            name=name,
+            url=url,
+            description=description,
+            macros=MacroNutrients(
+                protein=float(calc_result.get("protein", 0)),
+                carbs=float(calc_result.get("carbs", 0)),
+                fats=float(calc_result.get("fats", 0)),
+                calories=int(calc_result.get("calories", 0))
+            ),
+            ingredients=calc_result.get("ingredients", ingredients),
+            instructions=instructions,
+            tags=[],
+        )
+
+        # Generate auto-tags combined with manual tags
+        tagger = AutoTagger()
+        recipe_obj.tags = tagger.tag(recipe_obj, manual_tags=tags)
+
+        # Insert or update in main db
+        if db.exists(recipe_id):
+            db.update(recipe_id, recipe_obj.to_dict())
+        else:
+            db.insert(recipe_id, recipe_obj)
+
+        # Delete from not_added_db
+        not_added_db.delete(recipe_id)
+
+        return jsonify({"success": True, "recipe": recipe_obj.to_dict()})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route('/manual_check/delete', methods=['POST'])
+def delete_failed_recipe():
+    try:
+        req_data = request.json or {}
+        recipe_id = req_data.get('id')
+        if not recipe_id:
+            return jsonify({"error": "Missing recipe ID"}), 400
+
+        success = not_added_db.delete(recipe_id)
+        return jsonify({"success": success})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

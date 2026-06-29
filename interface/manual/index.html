@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link href="https://fonts.googleapis.com/css?family=Sofia+Pro&display=swap" rel="stylesheet" />
+  <link href="./css/main.css" rel="stylesheet" />
+  <title>Grams - Manual Review</title>
+</head>
+<body>
+  <div class="view-manual-container" style="display: flex; flex-direction: column; width: 100%; height: 100%;">
+    
+    <!-- HEADER -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; width: 100%;">
+      <button onclick="goBackToAccount()" style="background: none; border: none; cursor: pointer; color: var(--primary-100); display: flex; align-items: center; gap: 6px; padding: 8px 0; font-family: inherit; font-size: 15px; font-weight: 700;">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+        Back to Profile
+      </button>
+      <span style="font-family: 'Outfit'; font-weight: 800; font-size: 20px; color: #0a2533;">Manual Review</span>
+      <div style="width: 20px;"></div>
+    </div>
+
+    <!-- STATE 1: LIST FAILED RECIPES -->
+    <div id="manualListState" style="display: block; width: 100%;">
+      <div style="margin-bottom: 16px;">
+        <p style="font-size: 13px; color: #748189; margin: 0;">Select a failed recipe below to manually review transcripts, edit details, and approve it.</p>
+      </div>
+      
+      <!-- List Container -->
+      <div id="manualFailedRecipesContainer" style="display: flex; flex-direction: column; gap: 12px;">
+        <!-- Filled dynamically -->
+      </div>
+    </div>
+
+    <!-- STATE 2: REVIEW / FORM STATE -->
+    <div id="manualReviewState" style="display: none; width: 100%;">
+      <button onclick="goBackToManualList()" style="background: none; border: none; cursor: pointer; color: #748189; display: flex; align-items: center; gap: 4px; padding: 6px 0; font-family: inherit; font-size: 14px; font-weight: 600; margin-bottom: 16px;">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7"/></svg>
+        Back to List
+      </button>
+
+      <!-- Original Details Panel -->
+      <div style="background: #f1f5f5; border: 1px solid var(--primary-40); border-radius: 16px; padding: 16px; margin-bottom: 20px;">
+        <div style="font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">TikTok Reference</div>
+        <a id="manualOrigUrl" href="#" target="_blank" style="font-family: 'Outfit'; font-weight: 700; font-size: 15px; color: var(--primary-100); text-decoration: underline; word-break: break-all; display: block; margin-bottom: 12px;">Open Video Link ↗</a>
+        
+        <div style="font-size: 11px; font-weight: 700; color: var(--primary-100); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Original Transcript / Description</div>
+        <div id="manualOrigDesc" style="background: white; border: 1px solid var(--primary-40); border-radius: 12px; padding: 12px; max-height: 150px; overflow-y: auto; font-size: 13px; color: #0a2533; white-space: pre-wrap; line-height: 1.45;"></div>
+      </div>
+
+      <!-- Editing Form -->
+      <form id="manualReviewForm" onsubmit="saveManualApprove(event)" class="edit-form">
+        <input type="hidden" id="manualReviewId">
+        
+        <div class="form-group">
+          <label>Recipe Name</label>
+          <input type="text" id="manualReviewName" required style="width: 100%;">
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="manualReviewDesc" rows="3" style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Tags (comma separated)</label>
+          <input type="text" id="manualReviewTags" placeholder="e.g. High-Protein, Meal Prep" style="width: 100%;">
+        </div>
+
+        <!-- Ingredients Checklist/Builder -->
+        <div class="form-group">
+          <label>Ingredients</label>
+          <div class="ing-edit-list" id="manualIngEditList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+            <!-- Filled dynamically -->
+          </div>
+          <button type="button" class="btn-add-ing" onclick="addManualIngredientRow()">+ Add Ingredient</button>
+        </div>
+
+        <!-- Instructions Textarea -->
+        <div class="form-group">
+          <label>Instructions (one step per line)</label>
+          <textarea id="manualReviewInstructions" rows="6" placeholder="Step 1: Prep the chicken
+Step 2: Add spices and cook
+Step 3: Serve warm" style="width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--primary-40); outline: none; background: var(--primary-20); font-family: inherit; font-size: 14px; resize: vertical;" required></textarea>
+        </div>
+
+        <!-- Macro Breakdown Preview (Live updates) -->
+        <div class="form-group" style="background: var(--primary-20); border: 1px solid var(--primary-40); border-radius: 16px; padding: 16px; margin-bottom: 24px;">
+          <label style="margin-bottom: 10px; font-weight: 700; color: #0a2533; font-family: 'Outfit';">Live Macro Calculation</label>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center;">
+            <div style="background: white; border-radius: 10px; padding: 8px 4px; border: 1px solid var(--primary-40);">
+              <span id="manualProtein" style="display: block; font-family: 'Outfit'; font-weight: 800; font-size: 16px; color: #0a2533;">0g</span>
+              <span style="font-size: 10px; color: #748189; font-weight: 600;">Protein</span>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 8px 4px; border: 1px solid var(--primary-40);">
+              <span id="manualCarbs" style="display: block; font-family: 'Outfit'; font-weight: 800; font-size: 16px; color: #0a2533;">0g</span>
+              <span style="font-size: 10px; color: #748189; font-weight: 600;">Carbs</span>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 8px 4px; border: 1px solid var(--primary-40);">
+              <span id="manualFats" style="display: block; font-family: 'Outfit'; font-weight: 800; font-size: 16px; color: #0a2533;">0g</span>
+              <span style="font-size: 10px; color: #748189; font-weight: 600;">Fats</span>
+            </div>
+            <div style="background: white; border-radius: 10px; padding: 8px 4px; border: 1px solid var(--primary-40);">
+              <span id="manualCalories" style="display: block; font-family: 'Outfit'; font-weight: 800; font-size: 16px; color: #0a2533;">0</span>
+              <span style="font-size: 10px; color: #748189; font-weight: 600;">Calories</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <button type="submit" class="btn-save" style="width: 100%; padding: 14px; font-size: 15px; font-weight: 700;">Approve & Promote Recipe</button>
+          <button type="button" onclick="saveManualDelete()" style="width: 100%; padding: 14px; border-radius: 14px; background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; font-family: inherit;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            Discard Failed Recipe
+          </button>
+        </div>
+      </form>
+    </div>
+    
+  </div>
+</body>
+</html>

@@ -58,6 +58,7 @@ class RecipeDatabase:
             "description": row.get("description"),
             "macros": row.get("macros"),
             "ingredients": row.get("ingredients"),
+            "instructions": row.get("instructions") or [],
             "tags": row.get("tags"),
             "added_on": row.get("added_on"),
         }
@@ -86,6 +87,7 @@ class RecipeDatabase:
             "description": recipe_dict.get("description"),
             "macros": recipe_dict.get("macros", {}),
             "ingredients": recipe_dict.get("ingredients", []),
+            "instructions": recipe_dict.get("instructions", []),
             "tags": recipe_dict.get("tags", []),
             "added_on": recipe_dict.get("added_on")
         }
@@ -111,6 +113,7 @@ class RecipeDatabase:
             "description": recipe_data.get("description"),
             "macros": recipe_data.get("macros", {}),
             "ingredients": recipe_data.get("ingredients", []),
+            "instructions": recipe_data.get("instructions", []),
             "tags": recipe_data.get("tags", []),
             "added_on": recipe_data.get("added_on"),
             "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()

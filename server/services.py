@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 RECIPES_TABLE = getattr(config, "RECIPES_TABLE", "recipes")
 db = RecipeDatabase(RECIPES_TABLE)
 
+NOT_ADDED_RECIPES_TABLE = getattr(config, "NOT_ADDED_RECIPES_TABLE", "not_added_recipes")
+not_added_db = RecipeDatabase(NOT_ADDED_RECIPES_TABLE)
+
 _analyzer = None
 
 def get_analyzer():

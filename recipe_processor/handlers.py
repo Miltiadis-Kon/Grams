@@ -188,8 +188,11 @@ class PersistenceHandler(BaseHandler):
         if is_filled:
             if self._not_added_db.exists(context.recipe_id):
                 self._not_added_db.delete(context.recipe_id)
-            self._db.insert(context.recipe_id, recipe)
-            logger.info("ADDED: Recipe '%s' (%s) — %d tags", context.recipe_id, context.name, len(recipe.tags))
+            if self._db.exists(context.recipe_id):
+                self._db.update(context.recipe_id, recipe.to_dict() if hasattr(recipe, "to_dict") else recipe)
+            else:
+                self._db.insert(context.recipe_id, recipe)
+            logger.info("ADDED/UPDATED: Recipe '%s' (%s) — %d tags", context.recipe_id, context.name, len(recipe.tags))
             context.status = True
         else:
             if self._not_added_db.exists(context.recipe_id):
