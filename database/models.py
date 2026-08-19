@@ -72,8 +72,12 @@ class Recipe:
         "url": "...",
         "description": "...",
         "macros": { "protein": ..., "carbs": ..., "fats": ..., "calories": ... },
+        "ingredients": [...],
+        "instructions": [...],
         "tags": [...],
-        "added_on": "YYYY-MM-DD HH:MM:SS"
+        "added_on": "YYYY-MM-DD HH:MM:SS",
+        "transcript": "...",
+        "last_processed": "YYYY-MM-DD HH:MM:SS"
     }
     """
 
@@ -85,12 +89,17 @@ class Recipe:
     instructions: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     added_on: str = ""
+    transcript: str = ""
+    last_processed: str = ""
 
     def __post_init__(self):
         if self.name:
             self.name = self.name[:200]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if not self.added_on:
-            self.added_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.added_on = now_str
+        if not self.last_processed:
+            self.last_processed = now_str
 
     def to_dict(self) -> dict:
         return {
@@ -102,6 +111,8 @@ class Recipe:
             "instructions": self.instructions,
             "tags": self.tags,
             "added_on": self.added_on,
+            "transcript": self.transcript,
+            "last_processed": self.last_processed,
         }
 
     @classmethod
@@ -115,4 +126,6 @@ class Recipe:
             instructions=data.get("instructions", []),
             tags=data.get("tags", []),
             added_on=data.get("added_on", ""),
+            transcript=data.get("transcript", ""),
+            last_processed=data.get("last_processed", ""),
         )

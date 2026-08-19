@@ -850,6 +850,30 @@ function openRecipeDetails(id) {
     stepsList.innerHTML = `<div style="color:var(--neutral-gray3); font-size:13px; text-align:center; padding:12px; width: 100% !important;">No instructions provided</div>`;
   }
 
+  // Set Transcript if available
+  const transcriptSection = document.getElementById('detailTranscriptSection');
+  const transcriptText = document.getElementById('detailTranscriptText');
+  if (transcriptSection && transcriptText) {
+    if (r.transcript && r.transcript.trim()) {
+      transcriptText.textContent = r.transcript.trim();
+      transcriptSection.style.display = 'block';
+    } else {
+      transcriptSection.style.display = 'none';
+      transcriptText.textContent = '';
+    }
+  }
+
+  // Set Last Processed Badge
+  const lastProcBadge = document.getElementById('detailLastProcessedBadge');
+  if (lastProcBadge) {
+    const lastProc = r.last_processed || r.added_on;
+    if (lastProc) {
+      lastProcBadge.textContent = `Last processed: ${lastProc}`;
+    } else {
+      lastProcBadge.textContent = '';
+    }
+  }
+
   // Embedded video / image setup inside the top header detailImage
   const videoContainer = document.getElementById('detailImage');
   const overlayEl = document.getElementById('detailImageOverlay');
@@ -1284,6 +1308,95 @@ async function executeDeleteRecipe() {
   } catch(err) {
     console.error("Delete recipe error:", err);
     alert("Failed to delete recipe. Please check server connection.");
+  }
+}
+
+// Reprocess recipe with Whisper & LLM
+async function reprocessRecipePrompt(id) {
+  if (!id) return;
+  const r = db[id];
+  if (!r) return;
+
+  const confirmed = confirm(`Are you sure you want to reprocess "${r.name}"?\n\nThis will re-download the video, extract audio, run Groq Whisper speech-to-text, and re-parse the ingredients and macronutrients with LLM.`);
+  if (!confirmed) return;
+
+  const btn = document.getElementById('detailsReprocessBtn');
+  let originalHtml = '';
+  if (btn) {
+    originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span style="display:inline-block; animation: spin 1s linear infinite;">🔄</span> Reprocessing...`;
+  }
+
+  try {
+    const res = await fetch('/api/recipes/reprocess', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, url: r.url })
+    });
+    const result = await res.json();
+    if (result.success && result.recipe) {
+      db[id] = result.recipe;
+      openRecipeDetails(id);
+      render();
+      alert(`✅ Recipe "${result.recipe.name || r.name}" was successfully reprocessed!`);
+    } else {
+      alert("Error reprocessing recipe: " + (result.error || "Unknown error"));
+    }
+  } catch (err) {
+    console.error("Reprocess error:", err);
+    alert("Failed to reprocess recipe. Please check server connection.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
+}
+
+async function reprocessManualRecipe() {
+  const id = document.getElementById('manualReviewId').value;
+  if (!id) return;
+
+  const url = document.getElementById('manualOrigUrl').getAttribute('href');
+  if (!url || url === '#') {
+    alert("No valid video URL found to reprocess.");
+    return;
+  }
+
+  const confirmed = confirm("Are you sure you want to reprocess this video with Groq Whisper & LLM?");
+  if (!confirmed) return;
+
+  const btn = event ? event.target : null;
+  let originalText = '';
+  if (btn) {
+    originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `🔄 Reprocessing video transcript & ingredients...`;
+  }
+
+  try {
+    const res = await fetch('/api/recipes/reprocess', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, url })
+    });
+    const result = await res.json();
+    if (result.success) {
+      alert("✅ Reprocessing complete! Reloading manual review list.");
+      await loadDB();
+      initManualCheck();
+    } else {
+      alert("Error reprocessing: " + (result.error || "Unknown error"));
+    }
+  } catch (err) {
+    console.error("Manual reprocess error:", err);
+    alert("Failed to reprocess video.");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+    }
   }
 }
 

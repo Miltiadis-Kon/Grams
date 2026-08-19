@@ -285,3 +285,37 @@ def delete_failed_recipe():
         return jsonify({"success": success})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@api_bp.route('/recipes/reprocess', methods=['POST'])
+def reprocess_recipe():
+    try:
+        req_data = request.json or {}
+        recipe_id = req_data.get('id')
+        url = req_data.get('url')
+
+        if not recipe_id and not url:
+            return jsonify({"error": "Missing recipe ID or URL"}), 400
+
+        if not url:
+            rec = db.get(recipe_id) or not_added_db.get(recipe_id)
+            if rec and rec.get('url'):
+                url = rec['url']
+            else:
+                return jsonify({"error": f"Could not find video URL for recipe ID '{recipe_id}'"}), 404
+
+        # Execute single video ingestion with force_reprocess=True
+        from helpers.engine import RecipeEngine
+        engine = RecipeEngine()
+        result = engine.ingest_tiktok_video(url, force=True)
+        engine.close()
+
+        # Fetch updated record
+        updated_recipe = db.get(recipe_id) or not_added_db.get(recipe_id)
+
+        return jsonify({
+            "success": True,
+            "status": "added" if result is True else ("not_added" if result is None else "skipped"),
+            "recipe": updated_recipe
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

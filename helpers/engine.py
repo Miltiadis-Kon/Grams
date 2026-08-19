@@ -58,13 +58,14 @@ class RecipeEngine:
         url: str,
         description: str,
         manual_tags: Optional[list[str]] = None,
-    ) -> bool:
+        force: bool = False,
+    ) -> bool | None:
         """
         Ingest a single recipe through the full pipeline.
 
-        Returns True if newly added, False if skipped (already exists).
+        Returns True if newly added/updated, False if skipped, None if saved to not-added.
         """
-        return self._sync.process(recipe_id, name, url, description, manual_tags)
+        return self._sync.process(recipe_id, name, url, description, manual_tags, force_reprocess=force)
 
     def ingest_batch(self, items: list[dict[str, Any]]) -> dict[str, int]:
         """
@@ -86,16 +87,16 @@ class RecipeEngine:
         """
         return self._ingester.ingest_playlist(playlist_url)
 
-    def ingest_tiktok_playlist_detailed(self, playlist_url: str, delay_seconds: float = 5.0) -> dict[str, int]:
+    def ingest_tiktok_playlist_detailed(self, playlist_url: str, delay_seconds: float = 5.0, force: bool = False) -> dict[str, int]:
         """
         Scrape a TikTok playlist, scan for video URLs, and ingest each detailed recipe page
-        slowly (delaying between requests) only if not already present in the database.
+        slowly (delaying between requests) only if not processed in the last 7 days (or if force=True).
         """
-        return self._ingester.ingest_playlist_detailed(playlist_url, delay_seconds)
+        return self._ingester.ingest_playlist_detailed(playlist_url, delay_seconds, force=force)
 
-    def ingest_tiktok_video(self, video_url: str) -> bool:
-        """Ingest a single TikTok video by URL."""
-        return self._ingester.ingest_single(video_url)
+    def ingest_tiktok_video(self, video_url: str, force: bool = False) -> bool | None:
+        """Ingest or reprocess a single TikTok video by URL."""
+        return self._ingester.ingest_single(video_url, force=force)
 
     # ── Queries ──────────────────────────────────────
 

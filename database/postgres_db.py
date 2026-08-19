@@ -87,6 +87,9 @@ class RecipeDatabase:
         if isinstance(instructions, str):
             instructions = json.loads(instructions)
 
+        last_proc = row.get("last_processed")
+        last_proc_str = last_proc.isoformat() if hasattr(last_proc, "isoformat") else (str(last_proc) if last_proc else "")
+
         return {
             "name": row.get("name"),
             "url": row.get("url"),
@@ -96,6 +99,8 @@ class RecipeDatabase:
             "instructions": instructions or [],
             "tags": tags,
             "added_on": row.get("added_on"),
+            "transcript": row.get("transcript") or "",
+            "last_processed": last_proc_str,
         }
 
     # Public API
@@ -133,6 +138,7 @@ class RecipeDatabase:
             json.dumps(recipe_dict.get("instructions", [])),
             json.dumps(recipe_dict.get("tags", [])),
             recipe_dict.get("added_on"),
+            recipe_dict.get("transcript", ""),
         )
 
         conn = None
@@ -144,8 +150,8 @@ class RecipeDatabase:
                         cur.execute(
                             f"""
                             INSERT INTO {self._table_name}
-                                (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on)
-                            VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s)
+                                (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on, transcript, last_processed)
+                            VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, NOW())
                             """,
                             data
                         )
@@ -171,6 +177,7 @@ class RecipeDatabase:
             json.dumps(recipe_data.get("instructions", [])),
             json.dumps(recipe_data.get("tags", [])),
             recipe_data.get("added_on"),
+            recipe_data.get("transcript", ""),
             datetime.datetime.now(datetime.timezone.utc).isoformat(),
             recipe_id,
         )
@@ -187,7 +194,8 @@ class RecipeDatabase:
                             SET name=%s, url=%s, description=%s,
                                 macros=%s::jsonb, ingredients=%s::jsonb,
                                 instructions=%s::jsonb, tags=%s::jsonb,
-                                added_on=%s, updated_at=%s
+                                added_on=%s, transcript=%s,
+                                last_processed=NOW(), updated_at=%s
                             WHERE recipe_id=%s
                             """,
                             data

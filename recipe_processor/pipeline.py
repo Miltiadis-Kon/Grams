@@ -58,13 +58,14 @@ class RecipePipeline:
         url: str,
         description: str,
         manual_tags: Optional[list[str]] = None,
+        force_reprocess: bool = False,
     ) -> bool | None:
         """
         Process a single recipe payload through the full pipeline.
         
         Returns:
-          True: Recipe was newly added to recipes DB
-          False: Recipe already processed (skipped)
+          True: Recipe was newly added/updated in recipes DB
+          False: Recipe skipped (processed recently within 7 days)
           None: Recipe had no data and was saved to not_added_recipes DB for manual check
         """
         context = RecipeContext(
@@ -72,7 +73,8 @@ class RecipePipeline:
             name=name,
             url=url,
             description=description,
-            manual_tags=manual_tags
+            manual_tags=manual_tags,
+            force_reprocess=force_reprocess,
         )
         
         try:

@@ -108,6 +108,10 @@ Step 3: Serve warm" style="width: 100%; padding: 12px; border-radius: 12px; bord
         <!-- Action Buttons -->
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <button type="submit" class="btn-save" style="width: 100%; padding: 14px; font-size: 15px; font-weight: 700;">Approve & Promote Recipe</button>
+          <button type="button" onclick="reprocessManualRecipe()" style="width: 100%; padding: 14px; border-radius: 14px; background: var(--secondary-20); color: var(--secondary-100); border: 1px solid var(--secondary-100); font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; font-family: inherit;">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            🔄 Reprocess Video with Whisper & LLM
+          </button>
           <button type="button" onclick="saveManualDelete()" style="width: 100%; padding: 14px; border-radius: 14px; background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 6px; font-family: inherit;">
             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             Discard Failed Recipe

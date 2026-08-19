@@ -57,29 +57,33 @@ def main():
         logger.error("Failed to initialize RecipeEngine: %s", e)
         sys.exit(1)
 
+    force = "--force" in sys.argv or "--reprocess" in sys.argv
+    if force:
+        logger.info("Force reprocess ENABLED (ignoring 7-day rate limit)")
+
     logger.info("Configured Ingestion Delay: %.1fs", delay)
     
     try:
         if "/video/" in resolved_url:
             logger.info("Processing single video: %s", resolved_url)
-            res = engine.ingest_tiktok_video(resolved_url)
+            res = engine.ingest_tiktok_video(resolved_url, force=force)
             logger.info("==========================================")
             if res is True:
-                logger.info("Sync completed successfully: Recipe was added to database!")
+                logger.info("Sync completed successfully: Recipe was added/updated in database!")
             elif res is False:
-                logger.info("Sync completed successfully: Recipe already exists (skipped)!")
+                logger.info("Sync completed: Recipe was skipped (processed within last 7 days; use --force to override).")
             else:
                 logger.info("Sync complete: Recipe had no data or failed parsing, saved/updated in manual check list.")
             logger.info("==========================================")
         else:
             logger.info("Processing playlist/collection: %s", resolved_url)
-            stats = engine.ingest_tiktok_playlist_detailed(resolved_url, delay_seconds=delay)
+            stats = engine.ingest_tiktok_playlist_detailed(resolved_url, delay_seconds=delay, force=force)
             
             logger.info("==========================================")
             logger.info("Sync completed successfully!")
-            logger.info("Added to DB : %d new recipe(s)", stats.get("added", 0))
+            logger.info("Added to DB : %d new/updated recipe(s)", stats.get("added", 0))
             logger.info("Manual Check: %d recipe(s) with no data", stats.get("not_added", 0))
-            logger.info("Skipped     : %d already processed recipe(s)", stats.get("skipped", 0))
+            logger.info("Skipped     : %d recipe(s) processed within last 7 days", stats.get("skipped", 0))
             logger.info("Errors      : %d occurred", stats.get("errors", 0))
             logger.info("==========================================")
     except KeyboardInterrupt:

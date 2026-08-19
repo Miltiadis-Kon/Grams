@@ -1,4 +1,4 @@
-﻿-- ============================================================
+-- ============================================================
 -- Grams — Full PostgreSQL Schema
 -- Run once on a fresh database (handled automatically by Docker)
 -- ============================================================
@@ -32,33 +32,39 @@ CREATE INDEX IF NOT EXISTS foods_name_trgm_idx
 -- Recipes table
 -- ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.recipes (
-    recipe_id    TEXT PRIMARY KEY,
-    name         TEXT,
-    url          TEXT,
-    description  TEXT,
-    macros       JSONB DEFAULT '{}',
-    ingredients  JSONB DEFAULT '[]',
-    instructions JSONB DEFAULT '[]',
-    tags         JSONB DEFAULT '[]',
-    added_on     TEXT,
-    updated_at   TIMESTAMPTZ
+    recipe_id      TEXT PRIMARY KEY,
+    name           TEXT,
+    url            TEXT,
+    description    TEXT,
+    macros         JSONB DEFAULT '{}',
+    ingredients    JSONB DEFAULT '[]',
+    instructions   JSONB DEFAULT '[]',
+    tags           JSONB DEFAULT '[]',
+    added_on       TEXT,
+    transcript     TEXT,
+    last_processed TIMESTAMPTZ DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS recipes_name_idx ON public.recipes (name);
 CREATE INDEX IF NOT EXISTS recipes_tags_idx ON public.recipes USING gin (tags);
+CREATE INDEX IF NOT EXISTS recipes_last_processed_idx ON public.recipes (last_processed);
 
 -- ──────────────────────────────────────────────────────────────
 -- Not-added (failed) recipes table — same schema as recipes
 -- ──────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.not_added_recipes (
-    recipe_id    TEXT PRIMARY KEY,
-    name         TEXT,
-    url          TEXT,
-    description  TEXT,
-    macros       JSONB DEFAULT '{}',
-    ingredients  JSONB DEFAULT '[]',
-    instructions JSONB DEFAULT '[]',
-    tags         JSONB DEFAULT '[]',
-    added_on     TEXT,
-    updated_at   TIMESTAMPTZ
+    recipe_id      TEXT PRIMARY KEY,
+    name           TEXT,
+    url            TEXT,
+    description    TEXT,
+    macros         JSONB DEFAULT '{}',
+    ingredients    JSONB DEFAULT '[]',
+    instructions   JSONB DEFAULT '[]',
+    tags           JSONB DEFAULT '[]',
+    added_on       TEXT,
+    transcript     TEXT,
+    last_processed TIMESTAMPTZ DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ
 );
+

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from database import RecipeDatabase, Recipe
 from helpers.nutrition import NutritionAnalyzer
 from helpers.tagger import AutoTagger
@@ -9,6 +9,23 @@ from .llm_parser import translate_description_if_needed, parse_recipe_with_llm, 
 
 logger = logging.getLogger(__name__)
 
+def is_within_7_days(date_str: str) -> bool:
+    """Check if the given date string is within the past 7 days."""
+    if not date_str:
+        return False
+    try:
+        clean_str = str(date_str).replace("Z", "").split(".")[0].split("+")[0]
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(clean_str, fmt)
+                diff = datetime.now() - dt
+                return diff.total_seconds() < 7 * 86400  # 7 days
+            except ValueError:
+                continue
+    except Exception:
+        pass
+    return False
+
 class DeltaCheckHandler(BaseHandler):
     def __init__(self, db: RecipeDatabase, not_added_db: RecipeDatabase):
         super().__init__()
@@ -16,20 +33,34 @@ class DeltaCheckHandler(BaseHandler):
         self._not_added_db = not_added_db
 
     def handle(self, context: RecipeContext) -> None:
-        if self._db.exists(context.recipe_id):
-            logger.info("SKIP: Recipe '%s' (%s) already in main database", context.recipe_id, context.name)
-            context.is_skipped = True
-            context.status = False
-            return  # Stop the chain
+        if context.force_reprocess:
+            logger.info("FORCE RE-PROCESS: Recipe '%s' (%s)", context.recipe_id, context.name)
+            self.next(context)
+            return
+
+        existing_record = self._db.get(context.recipe_id)
+        if existing_record:
+            last_proc = existing_record.get("last_processed") or existing_record.get("added_on")
+            if is_within_7_days(last_proc):
+                logger.info("SKIP: Recipe '%s' (%s) was processed recently (%s - within 7 days)", context.recipe_id, context.name, last_proc)
+                context.is_skipped = True
+                context.status = False
+                return  # Stop the chain
+            else:
+                logger.info("RE-PROCESSING: Recipe '%s' (%s) was processed >7 days ago (%s)", context.recipe_id, context.name, last_proc)
+                self.next(context)
+                return
 
         if self._not_added_db.exists(context.recipe_id):
             existing = self._not_added_db.get(context.recipe_id)
+            last_proc = ""
             desc = ""
             if existing:
+                last_proc = existing.get("last_processed") or existing.get("added_on") or ""
                 desc = existing.get("description", "") if isinstance(existing, dict) else getattr(existing, "description", "")
             
-            if "[Transcript]" in desc or "Transcript fetch failed" in desc or "[Ollama]" in desc:
-                logger.info("SKIP: Recipe '%s' (%s) already processed and fallback attempted", context.recipe_id, context.name)
+            if is_within_7_days(last_proc) and ("[Transcript]" in desc or "Transcript fetch failed" in desc or "[Ollama]" in desc):
+                logger.info("SKIP: Recipe '%s' (%s) in manual check list was processed recently (%s)", context.recipe_id, context.name, last_proc)
                 context.is_skipped = True
                 context.status = False
                 return  # Stop the chain
@@ -68,30 +99,27 @@ class DescriptionParseHandler(BaseHandler):
 
 class TranscriptFetchHandler(BaseHandler):
     def handle(self, context: RecipeContext) -> None:
-        if context.ingredients:
-            logger.info("Ingredients found. Skipping transcript fetch.")
-            self.next(context)
-            return
+        # Always attempt to fetch and store the full video transcript if not already populated
+        if not context.transcript and context.url:
+            logger.info("Fetching Groq Whisper transcript for '%s'...", context.recipe_id)
+            try:
+                from helpers.whisper_extractor import fetch_groq_whisper_transcript
+                transcript_text = fetch_groq_whisper_transcript(context.url)
+                
+                if transcript_text:
+                    transcript_text = transcript_text.strip()
+                    context.transcript = transcript_text
+                    logger.info("Groq Whisper transcript fetched (%d chars) for '%s'", len(transcript_text), context.recipe_id)
+            except Exception as exc:
+                logger.warning("Groq Whisper transcript fetch failed for '%s': %s", context.recipe_id, exc)
 
-        logger.info("No ingredients in description for '%s'. Fetching Groq Whisper transcript...", context.recipe_id)
-        try:
-            from helpers.whisper_extractor import fetch_groq_whisper_transcript
-            transcript_text = fetch_groq_whisper_transcript(context.url)
-            
-            if transcript_text:
-                transcript_text = transcript_text.strip()
-                logger.info("Groq Whisper transcript fetched (%d chars): %s...", len(transcript_text), transcript_text[:80])
-                translated_desc = translate_description_if_needed(transcript_text)
-                context.description = f"[Transcript]\n{translated_desc}"
-                context.transcript = translated_desc
-            else:
-                logger.warning("Groq Whisper returned empty transcript for: %s", context.url)
-                if "Transcript fetch failed" not in context.description:
-                    context.description = f"{context.description}\n\n[Transcript fetch failed: empty content]"
-        except Exception as exc:
-            logger.error("Groq Whisper transcript fetch failed: %s", exc)
+        # If no ingredients were extracted from description, use the transcript for recipe parsing
+        if not context.ingredients and context.transcript:
+            translated_desc = translate_description_if_needed(context.transcript)
+            context.description = f"[Transcript]\n{translated_desc}"
+        elif not context.ingredients and not context.transcript:
             if "Transcript fetch failed" not in context.description:
-                context.description = f"{context.description}\n\n[Transcript fetch failed: {exc}]"
+                context.description = f"{context.description}\n\n[Transcript fetch failed]"
 
         self.next(context)
 
@@ -146,7 +174,7 @@ class AutoTaggingHandler(BaseHandler):
         self._tagger = tagger
 
     def handle(self, context: RecipeContext) -> None:
-        # We need a temporary Recipe object to pass to the tagger
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         recipe = Recipe(
             name=context.name,
             url=context.url,
@@ -154,7 +182,9 @@ class AutoTaggingHandler(BaseHandler):
             macros=context.macros,
             ingredients=context.ingredients,
             instructions=context.instructions,
-            added_on=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            added_on=now_str,
+            transcript=context.transcript,
+            last_processed=now_str,
         )
         context.tags = self._tagger.tag(recipe, context.manual_tags)
         self.next(context)
@@ -167,6 +197,7 @@ class PersistenceHandler(BaseHandler):
         self._not_added_db = not_added_db
 
     def handle(self, context: RecipeContext) -> None:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         recipe = Recipe(
             name=context.name,
             url=context.url,
@@ -175,7 +206,9 @@ class PersistenceHandler(BaseHandler):
             ingredients=context.ingredients,
             instructions=context.instructions,
             tags=context.tags,
-            added_on=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            added_on=now_str,
+            transcript=context.transcript,
+            last_processed=now_str,
         )
 
         is_filled = not (

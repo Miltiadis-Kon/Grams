@@ -83,11 +83,12 @@ class TikTokIngester:
         return self._pipeline.process_batch(items)
 
     def ingest_playlist_detailed(
-        self, playlist_url: str, delay_seconds: float = TIKTOK_INGEST_DELAY_SEC
+        self, playlist_url: str, delay_seconds: float = TIKTOK_INGEST_DELAY_SEC, force: bool = False
     ) -> dict[str, int]:
         """
-        Scrapes all video URLs from a playlist. For each video not already in the database,
-        visits the individual video page to fetch the full description, parses it, and adds it.
+        Scrapes all video URLs from a playlist. For each video not already in the database
+        (or processed >7 days ago unless force=True), visits the individual video page,
+        fetches description and transcript, parses it, and adds/updates it.
         Waits `delay_seconds` between newly processed videos to avoid rate limits.
         """
         stats = {"added": 0, "skipped": 0, "errors": 0, "not_added": 0}
@@ -102,31 +103,30 @@ class TikTokIngester:
             len(video_links),
         )
 
+        from recipe_processor.handlers import is_within_7_days
+
         for idx, item in enumerate(video_links):
             video_id = item["id"]
             video_url = item["url"]
 
-            # O(1) skip check before hitting the network for this video
-            in_main = self._pipeline._db.exists(video_id)
-            in_not_added = self._pipeline._not_added_db.exists(video_id)
             should_skip = False
-            
-            if in_main:
-                should_skip = True
-            elif in_not_added:
-                existing = self._pipeline._not_added_db.get(video_id)
-                desc = ""
+            if not force:
+                existing = self._pipeline._db.get(video_id)
                 if existing:
-                    if isinstance(existing, dict):
-                        desc = existing.get("description", "")
-                    else:
-                        desc = getattr(existing, "description", "")
-                if "[Transcript]" in desc or "Transcript fetch failed" in desc:
-                    should_skip = True
-            
+                    last_proc = existing.get("last_processed") or existing.get("added_on")
+                    if is_within_7_days(last_proc):
+                        should_skip = True
+                else:
+                    existing_not_added = self._pipeline._not_added_db.get(video_id)
+                    if existing_not_added:
+                        last_proc = existing_not_added.get("last_processed") or existing_not_added.get("added_on")
+                        desc = existing_not_added.get("description", "") if isinstance(existing_not_added, dict) else getattr(existing_not_added, "description", "")
+                        if is_within_7_days(last_proc) and ("[Transcript]" in desc or "Transcript fetch failed" in desc or "[Ollama]" in desc):
+                            should_skip = True
+
             if should_skip:
                 logger.info(
-                    "[%d/%d] SKIP: Video ID %s already processed",
+                    "[%d/%d] SKIP: Video ID %s processed recently (<7 days)",
                     idx + 1,
                     len(video_links),
                     video_id,
@@ -135,17 +135,17 @@ class TikTokIngester:
                 continue
 
             logger.info(
-                "[%d/%d] PROCESSING NEW VIDEO: %s",
+                "[%d/%d] PROCESSING VIDEO: %s",
                 idx + 1,
                 len(video_links),
                 video_url,
             )
             try:
-                added = self.ingest_single(video_url)
+                added = self.ingest_single(video_url, force=force)
                 if added is True:
                     stats["added"] += 1
                     logger.info(
-                        "Added video %s. Sleeping for %.1f seconds...",
+                        "Added/updated video %s. Sleeping for %.1f seconds...",
                         video_id,
                         delay_seconds,
                     )
@@ -154,7 +154,7 @@ class TikTokIngester:
                     logger.warning("Recipe %s had no data; routed to manual check list", video_id)
                     stats["not_added"] += 1
                 else:
-                    logger.info("Skipped video %s (already processed)", video_id)
+                    logger.info("Skipped video %s (already processed recently)", video_id)
                     stats["skipped"] += 1
             except Exception as exc:
                 logger.error("Error ingesting video %s: %s", video_id, exc)
@@ -229,11 +229,11 @@ class TikTokIngester:
 
         return videos
 
-    def ingest_single(self, video_url: str) -> bool:
+    def ingest_single(self, video_url: str, force: bool = False) -> bool | None:
         """
         Extract metadata from a single TikTok video and process it.
 
-        Returns True if the recipe was newly added, False if skipped.
+        Returns True if the recipe was newly added/updated, False if skipped, None if saved to not-added.
         """
         video = self._extract_single_video(video_url)
         if not video:
@@ -245,6 +245,7 @@ class TikTokIngester:
             name=video.get("title", "Untitled"),
             url=video.get("url", video_url),
             description=video.get("description", ""),
+            force_reprocess=force,
         )
 
     # ── Private: Playwright Extraction ───────────────

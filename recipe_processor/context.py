@@ -21,5 +21,7 @@ class RecipeContext:
     transcript: str = ""
     
     # Control flow flags
+    force_reprocess: bool = False
     is_skipped: bool = False
     status: Optional[bool] = None  # True if added, False if skipped, None if saved to not-added
+    last_processed: str = ""
