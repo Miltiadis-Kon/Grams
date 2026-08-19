@@ -83,17 +83,24 @@ class RecipeDatabase:
                     added_on TEXT,
                     transcript TEXT,
                     last_processed TEXT,
+                    metadata TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            # Auto-migrate columns if missing
+            for col in ["metadata", "transcript", "last_processed"]:
+                try:
+                    conn.execute(f"ALTER TABLE {self._table_name} ADD COLUMN {col} TEXT;")
+                except Exception:
+                    pass
             conn.commit()
         logger.info("RecipeDatabase SQLite initialized for table: %s at %s", self._table_name, self._sqlite_path)
 
     # Internal helpers
 
     def _row_to_dict(self, row: dict) -> dict:
-        """Convert a PostgreSQL record into canonical recipe JSON structure."""
+        """Convert a PostgreSQL/SQLite record into canonical recipe JSON structure."""
         macros = row.get("macros")
         if isinstance(macros, str):
             macros = json.loads(macros)
@@ -113,6 +120,18 @@ class RecipeDatabase:
         last_proc = row.get("last_processed")
         last_proc_str = last_proc.isoformat() if hasattr(last_proc, "isoformat") else (str(last_proc) if last_proc else "")
 
+        metadata = row.get("metadata")
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except Exception:
+                metadata = {}
+        if not metadata:
+            metadata = {
+                "transcript": row.get("transcript") or "",
+                "description": row.get("description") or "",
+            }
+
         return {
             "name": row.get("name"),
             "url": row.get("url"),
@@ -124,6 +143,7 @@ class RecipeDatabase:
             "added_on": row.get("added_on"),
             "transcript": row.get("transcript") or "",
             "last_processed": last_proc_str,
+            "metadata": metadata,
         }
 
     # Public API
@@ -156,54 +176,86 @@ class RecipeDatabase:
                 if conn:
                     conn.close()
 
-    def insert(self, recipe_id: str, recipe) -> None:
+    def insert(self, recipe_id: str, recipe, update_last_processed: bool = True) -> None:
         """Insert a new recipe record."""
         recipe_dict = recipe.to_dict() if hasattr(recipe, "to_dict") else recipe
-        data = (
-            recipe_id,
-            recipe_dict.get("name"),
-            recipe_dict.get("url"),
-            recipe_dict.get("description"),
-            json.dumps(recipe_dict.get("macros", {})),
-            json.dumps(recipe_dict.get("ingredients", [])),
-            json.dumps(recipe_dict.get("instructions", [])),
-            json.dumps(recipe_dict.get("tags", [])),
-            recipe_dict.get("added_on"),
-            recipe_dict.get("transcript", ""),
-        )
+        transcript_val = recipe_dict.get("transcript", "")
+        desc_val = recipe_dict.get("description", "")
+        metadata_val = recipe_dict.get("metadata") or {"transcript": transcript_val, "description": desc_val}
+        last_proc_val = recipe_dict.get("last_processed") if update_last_processed else ""
 
         if self._use_sqlite:
             import sqlite3
             import datetime
             now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            lp_to_write = now_iso if (update_last_processed and not last_proc_val) else (last_proc_val or (now_iso if update_last_processed else ""))
+            data = (
+                recipe_id,
+                recipe_dict.get("name"),
+                recipe_dict.get("url"),
+                desc_val,
+                json.dumps(recipe_dict.get("macros", {})),
+                json.dumps(recipe_dict.get("ingredients", [])),
+                json.dumps(recipe_dict.get("instructions", [])),
+                json.dumps(recipe_dict.get("tags", [])),
+                recipe_dict.get("added_on"),
+                transcript_val,
+                lp_to_write,
+                json.dumps(metadata_val),
+                now_iso,
+                now_iso,
+            )
             with self._lock:
                 with sqlite3.connect(self._sqlite_path) as conn:
                     conn.execute(
                         f"""
                         INSERT INTO {self._table_name}
-                            (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on, transcript, last_processed, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on, transcript, last_processed, metadata, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        data + (now_iso, now_iso, now_iso)
+                        data
                     )
                     conn.commit()
             logger.info("Inserted recipe '%s' to SQLite table '%s'", recipe_id, self._table_name)
             return
 
         conn = None
+        data = (
+            recipe_id,
+            recipe_dict.get("name"),
+            recipe_dict.get("url"),
+            desc_val,
+            json.dumps(recipe_dict.get("macros", {})),
+            json.dumps(recipe_dict.get("ingredients", [])),
+            json.dumps(recipe_dict.get("instructions", [])),
+            json.dumps(recipe_dict.get("tags", [])),
+            recipe_dict.get("added_on"),
+            transcript_val,
+            json.dumps(metadata_val),
+        )
         with self._lock:
             try:
                 conn = _get_connection()
                 with conn:
                     with conn.cursor() as cur:
-                        cur.execute(
-                            f"""
-                            INSERT INTO {self._table_name}
-                                (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on, transcript, last_processed)
-                            VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, NOW())
-                            """,
-                            data
-                        )
+                        if update_last_processed:
+                            cur.execute(
+                                f"""
+                                INSERT INTO {self._table_name}
+                                    (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on, transcript, metadata, last_processed)
+                                VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb, NOW())
+                                """,
+                                data
+                            )
+                        else:
+                            cur.execute(
+                                f"""
+                                INSERT INTO {self._table_name}
+                                    (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on, transcript, metadata)
+                                VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s::jsonb)
+                                """,
+                                data
+                            )
                 logger.info("Inserted recipe '%s' to table '%s'", recipe_id, self._table_name)
             except psycopg2.errors.UniqueViolation:
                 raise ValueError(f"Recipe '{recipe_id}' already exists in database")
@@ -214,57 +266,74 @@ class RecipeDatabase:
                 if conn:
                     conn.close()
 
-    def update(self, recipe_id: str, recipe_data: dict) -> None:
+    def update(self, recipe_id: str, recipe_data: dict, update_last_processed: bool = True) -> None:
         """Update an existing recipe record."""
         import datetime
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        transcript_val = recipe_data.get("transcript", "")
+        desc_val = recipe_data.get("description", "")
+        metadata_val = recipe_data.get("metadata") or {"transcript": transcript_val, "description": desc_val}
 
         if self._use_sqlite:
             import sqlite3
             with self._lock:
                 with sqlite3.connect(self._sqlite_path) as conn:
-                    conn.execute(
-                        f"""
-                        UPDATE {self._table_name}
-                        SET name=?, url=?, description=?,
-                            macros=?, ingredients=?,
-                            instructions=?, tags=?,
-                            added_on=?, transcript=?,
-                            last_processed=?, updated_at=?
-                        WHERE recipe_id=?
-                        """,
-                        (
-                            recipe_data.get("name"),
-                            recipe_data.get("url"),
-                            recipe_data.get("description"),
-                            json.dumps(recipe_data.get("macros", {})),
-                            json.dumps(recipe_data.get("ingredients", [])),
-                            json.dumps(recipe_data.get("instructions", [])),
-                            json.dumps(recipe_data.get("tags", [])),
-                            recipe_data.get("added_on"),
-                            recipe_data.get("transcript", ""),
-                            now_iso,
-                            now_iso,
-                            recipe_id,
+                    if update_last_processed:
+                        conn.execute(
+                            f"""
+                            UPDATE {self._table_name}
+                            SET name=?, url=?, description=?,
+                                macros=?, ingredients=?,
+                                instructions=?, tags=?,
+                                added_on=?, transcript=?,
+                                last_processed=?, metadata=?, updated_at=?
+                            WHERE recipe_id=?
+                            """,
+                            (
+                                recipe_data.get("name"),
+                                recipe_data.get("url"),
+                                desc_val,
+                                json.dumps(recipe_data.get("macros", {})),
+                                json.dumps(recipe_data.get("ingredients", [])),
+                                json.dumps(recipe_data.get("instructions", [])),
+                                json.dumps(recipe_data.get("tags", [])),
+                                recipe_data.get("added_on"),
+                                transcript_val,
+                                now_iso,
+                                json.dumps(metadata_val),
+                                now_iso,
+                                recipe_id,
+                            )
                         )
-                    )
+                    else:
+                        conn.execute(
+                            f"""
+                            UPDATE {self._table_name}
+                            SET name=?, url=?, description=?,
+                                macros=?, ingredients=?,
+                                instructions=?, tags=?,
+                                added_on=?, transcript=?,
+                                metadata=?, updated_at=?
+                            WHERE recipe_id=?
+                            """,
+                            (
+                                recipe_data.get("name"),
+                                recipe_data.get("url"),
+                                desc_val,
+                                json.dumps(recipe_data.get("macros", {})),
+                                json.dumps(recipe_data.get("ingredients", [])),
+                                json.dumps(recipe_data.get("instructions", [])),
+                                json.dumps(recipe_data.get("tags", [])),
+                                recipe_data.get("added_on"),
+                                transcript_val,
+                                json.dumps(metadata_val),
+                                now_iso,
+                                recipe_id,
+                            )
+                        )
                     conn.commit()
-            logger.info("Updated recipe '%s' in SQLite table '%s'", recipe_id, self._table_name)
+            logger.info("Updated recipe '%s' in SQLite table '%s' (update_last_processed=%s)", recipe_id, self._table_name, update_last_processed)
             return
-
-        data = (
-            recipe_data.get("name"),
-            recipe_data.get("url"),
-            recipe_data.get("description"),
-            json.dumps(recipe_data.get("macros", {})),
-            json.dumps(recipe_data.get("ingredients", [])),
-            json.dumps(recipe_data.get("instructions", [])),
-            json.dumps(recipe_data.get("tags", [])),
-            recipe_data.get("added_on"),
-            recipe_data.get("transcript", ""),
-            now_iso,
-            recipe_id,
-        )
 
         conn = None
         with self._lock:
@@ -272,19 +341,59 @@ class RecipeDatabase:
                 conn = _get_connection()
                 with conn:
                     with conn.cursor() as cur:
-                        cur.execute(
-                            f"""
-                            UPDATE {self._table_name}
-                            SET name=%s, url=%s, description=%s,
-                                macros=%s::jsonb, ingredients=%s::jsonb,
-                                instructions=%s::jsonb, tags=%s::jsonb,
-                                added_on=%s, transcript=%s,
-                                last_processed=NOW(), updated_at=%s
-                            WHERE recipe_id=%s
-                            """,
-                            data
-                        )
-                logger.info("Updated recipe '%s' in table '%s'", recipe_id, self._table_name)
+                        if update_last_processed:
+                            cur.execute(
+                                f"""
+                                UPDATE {self._table_name}
+                                SET name=%s, url=%s, description=%s,
+                                    macros=%s::jsonb, ingredients=%s::jsonb,
+                                    instructions=%s::jsonb, tags=%s::jsonb,
+                                    added_on=%s, transcript=%s, metadata=%s::jsonb,
+                                    last_processed=NOW(), updated_at=%s
+                                WHERE recipe_id=%s
+                                """,
+                                (
+                                    recipe_data.get("name"),
+                                    recipe_data.get("url"),
+                                    desc_val,
+                                    json.dumps(recipe_data.get("macros", {})),
+                                    json.dumps(recipe_data.get("ingredients", [])),
+                                    json.dumps(recipe_data.get("instructions", [])),
+                                    json.dumps(recipe_data.get("tags", [])),
+                                    recipe_data.get("added_on"),
+                                    transcript_val,
+                                    json.dumps(metadata_val),
+                                    now_iso,
+                                    recipe_id,
+                                )
+                            )
+                        else:
+                            cur.execute(
+                                f"""
+                                UPDATE {self._table_name}
+                                SET name=%s, url=%s, description=%s,
+                                    macros=%s::jsonb, ingredients=%s::jsonb,
+                                    instructions=%s::jsonb, tags=%s::jsonb,
+                                    added_on=%s, transcript=%s, metadata=%s::jsonb,
+                                    updated_at=%s
+                                WHERE recipe_id=%s
+                                """,
+                                (
+                                    recipe_data.get("name"),
+                                    recipe_data.get("url"),
+                                    desc_val,
+                                    json.dumps(recipe_data.get("macros", {})),
+                                    json.dumps(recipe_data.get("ingredients", [])),
+                                    json.dumps(recipe_data.get("instructions", [])),
+                                    json.dumps(recipe_data.get("tags", [])),
+                                    recipe_data.get("added_on"),
+                                    transcript_val,
+                                    json.dumps(metadata_val),
+                                    now_iso,
+                                    recipe_id,
+                                )
+                            )
+                logger.info("Updated recipe '%s' in table '%s' (update_last_processed=%s)", recipe_id, self._table_name, update_last_processed)
             except Exception as exc:
                 logger.error("update() failed for table '%s': %s", self._table_name, exc)
                 raise

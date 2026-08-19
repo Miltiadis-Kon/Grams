@@ -348,17 +348,22 @@ class NutritionAnalyzer:
             )
         return None
 
+    @staticmethod
+    def _clean_ingredient_name(name: str) -> str:
+        """Strip parenthetical annotations, optional markers, and normalize terms."""
+        if not name:
+            return ""
+        cleaned = re.sub(r'\(.*?\)', ' ', name)
+        cleaned = re.sub(r'\b(?:plain|black|white|unbleached)\s+or\s+', ' ', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\bSF\b', 'sugar free', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'[,:;\*•\-\+]', ' ', cleaned)
+        return ' '.join(cleaned.split()).strip()
+
     def analyze_ingredients(self, ingredients: list[dict[str, str]], description_for_servings: str = "") -> MacroNutrients:
         """
         Calculate total macros for a structured list of ingredients using OpenNutrition DB.
         Each ingredient is a dict with 'name' and 'quantity'.
         """
-        # First, try to extract explicit macros if they are in the description
-        explicit = self._extract_explicit_macros(description_for_servings)
-        if explicit:
-            logger.info("Using explicit macros extracted from description/transcript.")
-            return explicit
-
         total = MacroNutrients()
         matches = 0
 
@@ -369,18 +374,22 @@ class NutritionAnalyzer:
             if not name_str:
                 return None
 
+            cleaned_name = self._clean_ingredient_name(name_str)
+
             # Parse quantity and name combined to retrieve amount object
-            sentence = f"{qty_str} {name_str}".strip()
+            sentence = f"{qty_str} {cleaned_name}".strip()
             try:
                 result = parse_ingredient(sentence)
                 amount_obj = result.amount[0] if result.amount else None
             except Exception:
                 amount_obj = None
 
-            grams = self._get_ingredient_grams(amount_obj, name_str)
+            grams = self._get_ingredient_grams(amount_obj, cleaned_name, qty_str)
             scale = grams / 100.0
 
-            db_match = self.lookup_food(name_str, ing_hash if ing_hash else None)
+            db_match = self.lookup_food(cleaned_name, ing_hash if ing_hash else None)
+            if not db_match:
+                db_match = self.lookup_food(name_str, ing_hash if ing_hash else None)
             
             if db_match:
                 if db_match.food_id:
@@ -388,11 +397,11 @@ class NutritionAnalyzer:
                 if db_match.food_name:
                     ing["name"] = db_match.food_name
                     
-                ing["protein"] = db_match.protein * scale
-                ing["carbs"] = db_match.carbs * scale
-                ing["fats"] = db_match.fats * scale
-                ing["calories"] = db_match.calories * scale
-                ing["grams"] = grams
+                ing["protein"] = round(db_match.protein * scale, 2)
+                ing["carbs"] = round(db_match.carbs * scale, 2)
+                ing["fats"] = round(db_match.fats * scale, 2)
+                ing["calories"] = round(db_match.calories * scale, 1)
+                ing["grams"] = round(grams, 1)
 
             return (name_str, grams, scale, db_match)
 
@@ -400,20 +409,27 @@ class NutritionAnalyzer:
         results = [process_ing(ing) for ing in ingredients]
         
         for res in results:
-                if res is None:
-                    continue
-                name_str, grams, scale, db_match = res
-                if db_match:
-                    total.protein += db_match.protein * scale
-                    total.carbs += db_match.carbs * scale
-                    total.fats += db_match.fats * scale
-                    total.calories += db_match.calories * scale
-                    matches += 1
-                    logger.debug("Matched ingredient '%s' -> P:%.1f C:%.1f F:%.1f Cal:%d (grams: %.1f)",
-                                 name_str, db_match.protein * scale, db_match.carbs * scale,
-                                 db_match.fats * scale, db_match.calories * scale, grams)
-                else:
-                    logger.debug("No match for ingredient '%s'", name_str)
+            if res is None:
+                continue
+            name_str, grams, scale, db_match = res
+            if db_match:
+                total.protein += db_match.protein * scale
+                total.carbs += db_match.carbs * scale
+                total.fats += db_match.fats * scale
+                total.calories += db_match.calories * scale
+                matches += 1
+                logger.debug("Matched ingredient '%s' -> P:%.1f C:%.1f F:%.1f Cal:%d (grams: %.1f)",
+                             name_str, db_match.protein * scale, db_match.carbs * scale,
+                             db_match.fats * scale, db_match.calories * scale, grams)
+            else:
+                logger.debug("No match for ingredient '%s'", name_str)
+
+        # Check if explicit macros are present on the recipe
+        explicit = self._extract_explicit_macros(description_for_servings)
+        if explicit:
+            logger.info("Using explicit macros extracted from description/transcript: Cal:%d P:%.1f C:%.1f F:%.1f",
+                        explicit.calories, explicit.protein, explicit.carbs, explicit.fats)
+            return explicit
 
         if matches > 0:
             servings = self._extract_servings(description_for_servings)
@@ -654,8 +670,53 @@ class NutritionAnalyzer:
                     return val
         return 1.0
 
-    def _get_ingredient_grams(self, amount_obj, name_str: str) -> float:
+    def _get_ingredient_grams(self, amount_obj, name_str: str, raw_qty_str: str = "") -> float:
         """Estimate the weight in grams for a given parsed amount and ingredient name."""
+        if raw_qty_str:
+            # Handle ranges like 72-96g
+            range_match = re.search(r'(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*g', raw_qty_str, re.IGNORECASE)
+            if range_match:
+                return (float(range_match.group(1)) + float(range_match.group(2))) / 2.0
+            # Handle explicit grams/milliliters
+            g_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:g|ml|grams|milliliters)\b', raw_qty_str, re.IGNORECASE)
+            if g_match:
+                return float(g_match.group(1))
+
+            # Handle fractions like 3/4 cup, 1/2 tsp, 1 1/2 cups
+            frac_match = re.search(r'(?:(\d+)\s+)?(\d+)\s*/\s*(\d+)', raw_qty_str)
+            if frac_match:
+                whole = float(frac_match.group(1)) if frac_match.group(1) else 0.0
+                val = whole + (float(frac_match.group(2)) / float(frac_match.group(3)))
+                low = raw_qty_str.lower()
+                c_name = name_str.lower()
+                if "cup" in low:
+                    return val * (125.0 if "flour" in c_name else (226.0 if "cheese" in c_name else (216.0 if "oil" in c_name else 240.0)))
+                if "tbsp" in low:
+                    return val * 15.0
+                if "tsp" in low:
+                    return val * 5.0
+
+            # Handle decimal cups
+            cup_match = re.search(r'(\d+(?:\.\d+)?)\s*cups?\b', raw_qty_str, re.IGNORECASE)
+            if cup_match:
+                cups = float(cup_match.group(1))
+                c_name = name_str.lower()
+                return cups * (125.0 if "flour" in c_name else (226.0 if "cheese" in c_name else (216.0 if "oil" in c_name else 240.0)))
+            # Handle tablespoons
+            tbsp_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:tbsp|tablespoons?)\b', raw_qty_str, re.IGNORECASE)
+            if tbsp_match:
+                return float(tbsp_match.group(1)) * 15.0
+            # Handle teaspoons
+            tsp_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:tsp|teaspoons?)\b', raw_qty_str, re.IGNORECASE)
+            if tsp_match:
+                return float(tsp_match.group(1)) * 5.0
+            # Handle pure count
+            count_match = re.search(r'^(\d+(?:\.\d+)?)$', raw_qty_str.strip())
+            if count_match:
+                cnt = float(count_match.group(1))
+                c_name = name_str.lower()
+                return cnt * 50.0 if "egg" in c_name else (cnt * 0.5 if "salt" in c_name else cnt * 100.0)
+
         qty = 1.0
         if hasattr(amount_obj, 'quantity') and amount_obj.quantity:
             try:

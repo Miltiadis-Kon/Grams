@@ -91,6 +91,7 @@ class Recipe:
     added_on: str = ""
     transcript: str = ""
     last_processed: str = ""
+    metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if self.name:
@@ -100,6 +101,11 @@ class Recipe:
             self.added_on = now_str
         if not self.last_processed:
             self.last_processed = now_str
+        if not self.metadata:
+            self.metadata = {
+                "transcript": self.transcript,
+                "description": self.description,
+            }
 
     def to_dict(self) -> dict:
         return {
@@ -113,10 +119,25 @@ class Recipe:
             "added_on": self.added_on,
             "transcript": self.transcript,
             "last_processed": self.last_processed,
+            "metadata": self.metadata if self.metadata else {
+                "transcript": self.transcript,
+                "description": self.description,
+            },
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> Recipe:
+        meta = data.get("metadata")
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+        if not meta:
+            meta = {
+                "transcript": data.get("transcript", ""),
+                "description": data.get("description", ""),
+            }
         return cls(
             name=data.get("name", ""),
             url=data.get("url", ""),
@@ -128,4 +149,5 @@ class Recipe:
             added_on=data.get("added_on", ""),
             transcript=data.get("transcript", ""),
             last_processed=data.get("last_processed", ""),
+            metadata=meta,
         )

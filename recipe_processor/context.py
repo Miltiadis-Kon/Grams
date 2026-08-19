@@ -19,9 +19,12 @@ class RecipeContext:
     macros: MacroNutrients = field(default_factory=MacroNutrients)
     tags: list[str] = field(default_factory=list)
     transcript: str = ""
+    metadata: dict = field(default_factory=dict)
     
     # Control flow flags
     force_reprocess: bool = False
     is_skipped: bool = False
     status: Optional[bool] = None  # True if added, False if skipped, None if saved to not-added
     last_processed: str = ""
+    update_last_processed: bool = True
+    groq_out_of_credits: bool = False

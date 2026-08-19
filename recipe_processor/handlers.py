@@ -92,14 +92,27 @@ class DescriptionParseHandler(BaseHandler):
             else:
                 logger.info("LLM determined description for '%s' is NOT a recipe", context.recipe_id)
         except Exception as exc:
-            logger.error("LLM description parsing failed for '%s': %s", context.recipe_id, exc)
+            exc_str = str(exc).lower()
+            if any(k in exc_str for k in ("429", "402", "rate limit", "credit", "quota", "insufficient")):
+                logger.warning("Groq credits depleted / rate limit hit during description parsing for '%s': %s. Fallback: processing description without updating last_processed.", context.recipe_id, exc)
+                context.groq_out_of_credits = True
+                context.update_last_processed = False
+            else:
+                logger.error("LLM description parsing failed for '%s': %s", context.recipe_id, exc)
 
         self.next(context)
 
 
 class TranscriptFetchHandler(BaseHandler):
     def handle(self, context: RecipeContext) -> None:
-        # Always attempt to fetch and store the full video transcript if not already populated
+        # If Groq ran out of credits, skip transcript extraction and do not update last_processed
+        if context.groq_out_of_credits:
+            logger.warning("Groq credits depleted. Skipping transcript extraction for '%s'.", context.recipe_id)
+            context.update_last_processed = False
+            self.next(context)
+            return
+
+        # Attempt to fetch and store the full video transcript if not already populated
         if not context.transcript and context.url:
             logger.info("Fetching Groq Whisper transcript for '%s'...", context.recipe_id)
             try:
@@ -111,7 +124,13 @@ class TranscriptFetchHandler(BaseHandler):
                     context.transcript = transcript_text
                     logger.info("Groq Whisper transcript fetched (%d chars) for '%s'", len(transcript_text), context.recipe_id)
             except Exception as exc:
-                logger.warning("Groq Whisper transcript fetch failed for '%s': %s", context.recipe_id, exc)
+                exc_str = str(exc).lower()
+                if any(k in exc_str for k in ("429", "402", "rate limit", "credit", "quota", "insufficient")):
+                    logger.warning("Groq ran out of credits during Whisper transcription for '%s': %s. Processing description only and skipping last_processed update.", context.recipe_id, exc)
+                    context.groq_out_of_credits = True
+                    context.update_last_processed = False
+                else:
+                    logger.warning("Groq Whisper transcript fetch failed for '%s': %s", context.recipe_id, exc)
 
         # If no ingredients were extracted from description, use the transcript for recipe parsing
         if not context.ingredients and context.transcript:
@@ -126,7 +145,7 @@ class TranscriptFetchHandler(BaseHandler):
 
 class TranscriptParseHandler(BaseHandler):
     def handle(self, context: RecipeContext) -> None:
-        if context.ingredients or not context.transcript:
+        if context.ingredients or not context.transcript or context.groq_out_of_credits:
             self.next(context)
             return
 
@@ -149,8 +168,14 @@ class TranscriptParseHandler(BaseHandler):
                 logger.info("LLM determined transcript for '%s' is NOT a recipe. Routing to not-added.", context.recipe_id)
                 context.description = f"{context.description}\n\n[LLM: not a recipe]"
         except Exception as exc:
-            logger.error("LLM transcript parsing failed for '%s': %s", context.recipe_id, exc)
-            context.description = f"{context.description}\n\n[LLM parse failed: {exc}]"
+            exc_str = str(exc).lower()
+            if any(k in exc_str for k in ("429", "402", "rate limit", "credit", "quota", "insufficient")):
+                logger.warning("Groq credits depleted during LLM transcript parsing for '%s': %s. Setting update_last_processed=False.", context.recipe_id, exc)
+                context.groq_out_of_credits = True
+                context.update_last_processed = False
+            else:
+                logger.error("LLM transcript parsing failed for '%s': %s", context.recipe_id, exc)
+                context.description = f"{context.description}\n\n[LLM parse failed: {exc}]"
 
         self.next(context)
 
@@ -175,6 +200,14 @@ class AutoTaggingHandler(BaseHandler):
 
     def handle(self, context: RecipeContext) -> None:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        metadata = {
+            "transcript": context.transcript,
+            "description": context.description,
+        }
+        if context.groq_out_of_credits:
+            metadata["groq_quota_exceeded"] = True
+        context.metadata = metadata
+
         recipe = Recipe(
             name=context.name,
             url=context.url,
@@ -184,7 +217,8 @@ class AutoTaggingHandler(BaseHandler):
             instructions=context.instructions,
             added_on=now_str,
             transcript=context.transcript,
-            last_processed=now_str,
+            last_processed=now_str if context.update_last_processed else (context.last_processed or ""),
+            metadata=metadata,
         )
         context.tags = self._tagger.tag(recipe, context.manual_tags)
         self.next(context)
@@ -198,6 +232,14 @@ class PersistenceHandler(BaseHandler):
 
     def handle(self, context: RecipeContext) -> None:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        metadata = {
+            "transcript": context.transcript,
+            "description": context.description,
+        }
+        if context.groq_out_of_credits:
+            metadata["groq_quota_exceeded"] = True
+        context.metadata = metadata
+
         recipe = Recipe(
             name=context.name,
             url=context.url,
@@ -208,7 +250,8 @@ class PersistenceHandler(BaseHandler):
             tags=context.tags,
             added_on=now_str,
             transcript=context.transcript,
-            last_processed=now_str,
+            last_processed=now_str if context.update_last_processed else (context.last_processed or ""),
+            metadata=metadata,
         )
 
         is_filled = not (
@@ -222,16 +265,16 @@ class PersistenceHandler(BaseHandler):
             if self._not_added_db.exists(context.recipe_id):
                 self._not_added_db.delete(context.recipe_id)
             if self._db.exists(context.recipe_id):
-                self._db.update(context.recipe_id, recipe.to_dict() if hasattr(recipe, "to_dict") else recipe)
+                self._db.update(context.recipe_id, recipe.to_dict() if hasattr(recipe, "to_dict") else recipe, update_last_processed=context.update_last_processed)
             else:
-                self._db.insert(context.recipe_id, recipe)
-            logger.info("ADDED/UPDATED: Recipe '%s' (%s) — %d tags", context.recipe_id, context.name, len(recipe.tags))
+                self._db.insert(context.recipe_id, recipe, update_last_processed=context.update_last_processed)
+            logger.info("ADDED/UPDATED: Recipe '%s' (%s) — %d tags (last_processed updated: %s)", context.recipe_id, context.name, len(recipe.tags), context.update_last_processed)
             context.status = True
         else:
             if self._not_added_db.exists(context.recipe_id):
                 self._not_added_db.delete(context.recipe_id)
-            self._not_added_db.insert(context.recipe_id, recipe)
-            logger.info("NOT ADDED (Unfilled): Recipe '%s' (%s) saved/updated in manual check list", context.recipe_id, context.name)
+            self._not_added_db.insert(context.recipe_id, recipe, update_last_processed=context.update_last_processed)
+            logger.info("NOT ADDED (Unfilled): Recipe '%s' (%s) saved/updated in manual check list (last_processed updated: %s)", context.recipe_id, context.name, context.update_last_processed)
             context.status = None
 
         self.next(context)
