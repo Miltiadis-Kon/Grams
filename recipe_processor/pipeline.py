@@ -59,6 +59,7 @@ class RecipePipeline:
         description: str,
         manual_tags: Optional[list[str]] = None,
         force_reprocess: bool = False,
+        transcript: str = "",
     ) -> bool | None:
         """
         Process a single recipe payload through the full pipeline.
@@ -75,6 +76,7 @@ class RecipePipeline:
             description=description,
             manual_tags=manual_tags,
             force_reprocess=force_reprocess,
+            transcript=transcript,
         )
         
         try:

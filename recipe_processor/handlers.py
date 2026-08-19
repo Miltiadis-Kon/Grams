@@ -114,23 +114,34 @@ class TranscriptFetchHandler(BaseHandler):
 
         # Attempt to fetch and store the full video transcript if not already populated
         if not context.transcript and context.url:
-            logger.info("Fetching Groq Whisper transcript for '%s'...", context.recipe_id)
-            try:
-                from helpers.whisper_extractor import fetch_groq_whisper_transcript
-                transcript_text = fetch_groq_whisper_transcript(context.url)
-                
-                if transcript_text:
-                    transcript_text = transcript_text.strip()
-                    context.transcript = transcript_text
-                    logger.info("Groq Whisper transcript fetched (%d chars) for '%s'", len(transcript_text), context.recipe_id)
-            except Exception as exc:
-                exc_str = str(exc).lower()
-                if any(k in exc_str for k in ("429", "402", "rate limit", "credit", "quota", "insufficient")):
-                    logger.warning("Groq ran out of credits during Whisper transcription for '%s': %s. Processing description only and skipping last_processed update.", context.recipe_id, exc)
-                    context.groq_out_of_credits = True
-                    context.update_last_processed = False
-                else:
-                    logger.warning("Groq Whisper transcript fetch failed for '%s': %s", context.recipe_id, exc)
+            if "youtube.com" in context.url or "youtu.be" in context.url:
+                logger.info("Fetching direct YouTube transcript for '%s'...", context.recipe_id)
+                try:
+                    from helpers.youtube_transcript import fetch_youtube_transcript
+                    transcript_text = fetch_youtube_transcript(context.url)
+                    if transcript_text:
+                        context.transcript = transcript_text.strip()
+                        logger.info("Direct YouTube transcript fetched (%d chars) for '%s'", len(context.transcript), context.recipe_id)
+                except Exception as exc:
+                    logger.warning("Direct YouTube transcript fetch failed for '%s': %s", context.recipe_id, exc)
+            else:
+                logger.info("Fetching Groq Whisper transcript for '%s'...", context.recipe_id)
+                try:
+                    from helpers.whisper_extractor import fetch_groq_whisper_transcript
+                    transcript_text = fetch_groq_whisper_transcript(context.url)
+                    
+                    if transcript_text:
+                        transcript_text = transcript_text.strip()
+                        context.transcript = transcript_text
+                        logger.info("Groq Whisper transcript fetched (%d chars) for '%s'", len(transcript_text), context.recipe_id)
+                except Exception as exc:
+                    exc_str = str(exc).lower()
+                    if any(k in exc_str for k in ("429", "402", "rate limit", "credit", "quota", "insufficient")):
+                        logger.warning("Groq ran out of credits during Whisper transcription for '%s': %s. Processing description only and skipping last_processed update.", context.recipe_id, exc)
+                        context.groq_out_of_credits = True
+                        context.update_last_processed = False
+                    else:
+                        logger.warning("Groq Whisper transcript fetch failed for '%s': %s", context.recipe_id, exc)
 
         # If no ingredients were extracted from description, use the transcript for recipe parsing
         if not context.ingredients and context.transcript:
