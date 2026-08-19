@@ -1,270 +1,228 @@
-# Grams — Recipe Ingestion & Database Engine
+﻿# Grams — Recipe Ingestion & Database Engine
 
-Grams is a highly structured, local-first recipe cataloging, nutritional analysis, and meal planning system. It automates scraping TikTok recipe videos, parsing ingredients using Natural Language Processing (NLP), mapping them to a local PostgreSQL food database, auto-tagging diets and methods, and exposing a modern Web UI for searching and filtering.
+Grams is a structured, local-first recipe cataloging, nutritional analysis, and meal planning system. It automates scraping TikTok recipe videos, parsing ingredients using Natural Language Processing (NLP), mapping them to a curated PostgreSQL whole foods database (**ANSES CIQUAL dataset**), auto-tagging diets and cooking methods, and exposing a modern Web UI for searching and filtering.
 
-> **Local Stack**: The entire app runs on your own machine via Docker Compose — no cloud dependencies. Access it from any device via Tailscale.
+> **100% Local & Private**: The entire stack runs on your local machine via Docker Compose — zero cloud database dependencies. Access your recipes anywhere securely via **Tailscale**.
 
 ---
 
-## Quick Start (Docker)
+## 🖥️ Setup on a Vanilla PC (Fresh Machine)
 
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [Tailscale](https://tailscale.com/download) (optional, for remote access)
+Follow either **Method 1 (Docker — Recommended)** or **Method 2 (Bare Metal / Python)**.
 
-### 1. Configure Environment
+---
 
+### Method 1: 1-Step Setup with Docker (Recommended)
+
+This method requires only **Git** and **Docker Desktop**. It starts both the PostgreSQL database and the Flask web application in isolated containers, auto-initializes the database schema, and seeds **3,484+ curated CIQUAL whole foods**.
+
+#### 1. Install Prerequisites
+- **Git**: [git-scm.com/downloads](https://git-scm.com/downloads)
+- **Docker Desktop**: [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) *(Ensure Docker Desktop is running)*
+
+#### 2. Clone Repository
 ```bash
-# Copy and edit local credentials
-cp .env.local .env.local   # already exists — edit PG_PASSWORD and GROQ_API_KEY
+git clone https://github.com/Miltiadis-Kon/Grams.git
+cd Grams
 ```
 
-### 2. Start the Stack
+#### 3. Configure Local Secrets (`.env.local`)
+Create or edit your `.env.local` file in the project root:
+```ini
+# PostgreSQL credentials
+PG_HOST=localhost
+PG_PORT=5432
+PG_DB=grams
+PG_USER=grams
+PG_PASSWORD=your_secure_password_here
 
+# Groq API key (for Llama 3 NLP recipe parsing)
+GROQ_API_KEY=your_groq_api_key_here
+
+# Ollama local LLM fallback (optional)
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1
+
+# Flask server settings
+HOST=0.0.0.0
+PORT=5000
+```
+
+#### 4. Launch the Application Stack
 ```bash
 docker compose --env-file .env.local up -d
 ```
 
-This starts:
-- **PostgreSQL 16** on `localhost:5432` (data persisted in a Docker volume)
-- **Flask/Gunicorn** app on `http://localhost:5000`
-
-### 3. Migrate Data from Supabase (one-time)
-
-If you have existing data in Supabase, run the migration script:
-
-```bash
-# Requires old SUPABASE_URL + SUPABASE_KEY in .env
-pip install supabase psycopg2-binary
-python scripts/migrate_from_supabase.py
-```
-
-### 4. Access via Tailscale
-
-```bash
-tailscale ip -4   # get your Tailscale IP, e.g. 100.x.y.z
-# Then open: http://100.x.y.z:5000 on any tailnet device
-```
-
-See [TAILSCALE_SETUP.md](TAILSCALE_SETUP.md) for the full guide.
+#### 5. Open in Browser
+- **Local Access**: Open [http://localhost:5000](http://localhost:5000)
+- Database schema and **all 3,484 CIQUAL foods** are automatically created and seeded on first launch!
 
 ---
 
-## Project Structure
+### Method 2: Bare-Metal Setup (Python & Local Postgres)
+
+If you prefer running Python directly on your host machine for development:
+
+#### 1. Install Prerequisites
+- **Python 3.11+**: [python.org/downloads](https://www.python.org/downloads/)
+- **PostgreSQL 15 or 16**: [postgresql.org/download](https://www.postgresql.org/download/) *(or run PostgreSQL in a minimal docker container)*
+
+#### 2. Setup Local PostgreSQL Database
+Open your PostgreSQL terminal (`psql`) or pgAdmin and run:
+```sql
+CREATE DATABASE grams;
+CREATE USER grams WITH PASSWORD 'grams';
+GRANT ALL PRIVILEGES ON DATABASE grams TO grams;
+```
+
+#### 3. Initialize Database Schema & Seed CIQUAL Foods
+Run the initialization scripts against your local database:
+```bash
+# Load full database schema
+psql -h localhost -U grams -d grams -f database/schema_full.sql
+
+# Seed 3,484+ curated CIQUAL whole foods dataset
+psql -h localhost -U grams -d grams -f database/ciqual_foods_seed.sql
+```
+
+#### 4. Setup Python Environment
+```bash
+# Create and activate virtual environment
+python -m venv .venv
+
+# On Windows (PowerShell):
+.venv\Scripts\Activate.ps1
+# On Linux / macOS:
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install Playwright browser for TikTok scraper
+playwright install chromium
+```
+
+#### 5. Start the Web Server
+```bash
+python app.py
+```
+Open [http://localhost:5000](http://localhost:5000) in your browser.
+
+---
+
+## 🌐 Remote Access via Tailscale
+
+Access your local Grams server securely from your smartphone, tablet, or laptop wherever you are — without port forwarding or exposing ports to the public internet.
+
+1. **Install Tailscale**: Download from [tailscale.com/download](https://tailscale.com/download) on your PC and your phone.
+2. **Log In on Both Devices**:
+   ```bash
+   tailscale up
+   ```
+3. **Find your PC’s Tailscale IP**:
+   ```bash
+   tailscale ip -4
+   # Output example: 100.85.120.45
+   ```
+4. **Access from Phone or Secondary Device**:
+   Open your browser and navigate to:
+   ```
+   http://100.85.120.45:5000
+   ```
+*(For complete details including Tailscale MagicDNS and Public HTTPS Funnel, see [TAILSCALE_SETUP.md](TAILSCALE_SETUP.md)).*
+
+---
+
+## 📁 Project Structure
 
 ```
 Grams/
-├── database/                # Persistence & Canonical Schemas
-│   ├── __init__.py          # Database package exports
-│   ├── postgres_db.py       # Thread-safe PostgreSQL database engine (psycopg2)
-│   ├── schema_full.sql      # Full PostgreSQL schema (auto-applied by Docker)
-│   ├── ciqual_foods_seed.sql # Curated CIQUAL 3,484 whole foods dataset seed
-│   └── models.py            # Dataclasses matching required schemas
-├── interface/               # Frontend Assets
-│   ├── index.html           # Modern Web UI (Macro Finder)
-│   ├── manifest.json        # Progressive Web App manifest
-│   ├── sw.js                # Service Worker for offline/caching support
-│   └── baker.png            # Application logo
-├── helpers/                 # Application Core Logic
-│   ├── __init__.py          # Helpers package exports
-│   ├── engine.py            # RecipeEngine Orchestrator/Facade
-│   ├── ingester.py          # Playwright TikTok Scraper (Playlist/Single)
-│   ├── nutrition.py         # Curated CIQUAL PostgreSQL FTS search
-│   ├── query.py             # Read-only search & filter interfaces
-│   └── tagger.py            # Rule-based auto-tagging engine
+├── database/                   # Persistence Layer & Canonical Schemas
+│   ├── __init__.py             # Database package exports
+│   ├── postgres_db.py          # Thread-safe PostgreSQL RecipeDatabase (psycopg2)
+│   ├── schema_full.sql         # Full PostgreSQL schema with FTS & Trigram indexes
+│   ├── ciqual_foods_seed.sql   # Curated CIQUAL 3,484 whole foods dataset seed
+│   └── models.py               # Recipe & MacroNutrient dataclasses
+├── interface/                  # Frontend Assets (Single Page App)
+│   ├── index.html              # Modern Web UI (Macro Finder)
+│   ├── manifest.json           # Progressive Web App (PWA) manifest
+│   ├── sw.js                   # Service Worker for offline/caching support
+│   └── baker.png               # Application logo
+├── helpers/                    # Core Application Logic
+│   ├── __init__.py             # Helpers package exports
+│   ├── engine.py               # RecipeEngine orchestrator
+│   ├── ingester.py             # Playwright TikTok Scraper (Playlist/Single)
+│   ├── nutrition.py            # CIQUAL PostgreSQL FTS search & macro calculator
+│   ├── query.py                # Read-only search & filter interfaces
+│   └── tagger.py               # Rule-based auto-tagging engine
 ├── scripts/
-│   ├── seed_ciqual_to_postgres.py  # CIQUAL dataset seeder / exporter
-│   └── migrate_from_supabase.py   # One-time Supabase → PostgreSQL migration
-├── data/                    # Downloaded media & datasets (gitignored)
-├── app.py                   # Flask Web Server entry point
-├── config.py                # Centralized configurations & paths
-├── Dockerfile               # Container image definition
-├── docker-compose.yml       # Multi-service orchestration
-├── .env.local               # Local secrets (gitignored)
-├── TAILSCALE_SETUP.md       # Tailscale remote access guide
-├── requirements.txt         # Python dependencies
-└── README.md                # This file
+│   ├── seed_ciqual_to_postgres.py  # CIQUAL dataset extractor & seeder
+│   └── migrate_from_supabase.py    # One-time Supabase → PostgreSQL data migrator
+├── data/                       # Downloaded media & datasets (gitignored)
+├── app.py                      # Flask Web Server entry point
+├── config.py                   # Centralized configurations & paths
+├── Dockerfile                  # Container image definition (Python 3.11 + Playwright)
+├── docker-compose.yml          # Multi-service orchestration (Postgres + Flask App)
+├── .env.local                  # Local secrets template (gitignored)
+├── TAILSCALE_SETUP.md          # Tailscale setup & configuration guide
+├── requirements.txt            # Python dependencies
+└── README.md                   # System documentation
 ```
 
 ---
 
-## Core Architecture & Data Flow
+## 🥗 Curated Whole Foods Dataset (CIQUAL)
 
-```mermaid
-graph TD
-    A[TikTok Video / Playlist] -->|Playwright Headless Scraper| B[ingester.py]
-    B -->|Extract Raw Description & Title| C[sync.py Pipeline]
-    C -->|Parse Ingredients via NLP| D[nutrition.py]
-    D -->|FTS5 Lookup & Scale Grams| E[SQLite opennutrition.db]
-    D -->|Aggregated Macros & Ingredients| C
-    C -->|Auto-tag based on Keywords / Macros| F[tagger.py]
-    C -->|Atomic Persist| G[database/recipes_db.json]
-    G -->|Rounded API Responses| H[app.py Web API]
-    H -->|Query / Search / Filter| I[Web UI Interface]
+Grams uses the **ANSES CIQUAL 2024 Food Composition Database** for precise macronutrient matching:
+- **3,484 curated whole foods and ingredients**.
+- High-precision macronutrient breakdown: Protein, Carbohydrates, Fats, and Energy (kcal) per 100g.
+- Full-text search (PostgreSQL `tsvector`) and fuzzy matching (`pg_trgm`) for ingredient lookup and auto-completion.
+- Supports barcode scanning via Open Food Facts with automatic local caching.
+
+To refresh or re-seed the CIQUAL dataset at any time:
+```bash
+python scripts/seed_ciqual_to_postgres.py
 ```
 
-### 1. Headless TikTok Scraper (`helpers/ingester.py`)
-
-- Uses **Playwright** with custom user-agents to render JavaScript-heavy TikTok page structures.
-- Supports injecting cookies from `tiktok_cookies.json` to bypass logins and bot detection.
-- Exposes two scraper behaviors:
-  - **Fast Playlist Scrape**: Extracts links, titles, and alt descriptions directly from the playlist grid.
-  - **Detailed Video Scrape**: Visits individual video pages to grab full captions containing instructions/ingredients, parses hydration metadata from scripts (`SIGI_STATE`), and handles DOM fallback selectors.
-
-### 2. NLP Ingredient Parsing & Local SQLite Lookup (`helpers/nutrition.py`)
-
-- Utilizes the `ingredient-parser` NLP package to extract quantities, units, and food names from free-text descriptions.
-- Queries a local SQLite index of the **OpenNutrition dataset** (a curated 100g metric dataset) using an FTS5 full-text search index for fast name matching.
-- Automatically handles:
-  - **Serving Estimations**: Detects phrasing like "serves 4" to automatically scale and divide total recipe macros.
-  - **Weight Scaling**: Automatically converts non-metric units (e.g. cups, tbsp, tsp, ounces, eggs, cloves) to equivalent metric weights in grams.
-  - **Atwater fallback**: Automatically estimates calories based on standard macronutrient ratios if direct database energy lookups fail.
-
-### 3. Thread-Safe PostgreSQL Backend (`database/database.py`)
-
-- Employs a PostgreSQL database connection with dedicated tables for active and unfilled recipes.
-- Access is thread-safe, utilizing connection pooling/management suited for concurrent environments.
-
-### 4. Rule-Based Auto-Tagger (`helpers/tagger.py`)
-
-- Automatically assigns diet tags (e.g., `High-Protein`, `Keto-Friendly`, `Low-Calorie`) based on calculated macros.
-- Scans recipe names and descriptions against configurable keyword mappings (defined in `config.py`) to auto-assign style tags (e.g., `Meal Prep`, `Breakfast`, `Air Fryer`, `Seafood`, `Vegan`).
-- Merges auto-generated tags with manual overrides.
-
 ---
 
-## Installation & Setup
+## 🔄 Ingesting Recipes
 
-1. **Install Python dependencies**:
+### Continuous Slow Synchronization (CLI)
 
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Install Playwright Browsers**:
-
-   ```bash
-   playwright install chromium
-   ```
-
-3. **Configure Authentication (Optional but recommended)**:
-   Export your TikTok session cookies to `tiktok_cookies.json` in the project root folder. The JSON structure should look like this:
-
-   ```json
-   [
-     {
-       "name": "sessionid",
-       "value": "YOUR_SESSION_ID_HERE",
-       "domain": ".tiktok.com",
-       "path": "/"
-     }
-   ]
-   ```
-
-4. **Initialize OpenNutrition Database**:
-   The engine automatically downloads and builds the index under `data/opennutrition.db` on first run of either the web server, CLI tool, or test runner.
-
----
-
-## Ingesting Recipes
-
-### Continuous Slow Synchronization (Recommended)
-
-Use the `sync_recipes.py` CLI script to scrape a playlist. It extracts all video links, checks the local database, and visits detailed pages for **new videos only**, sleeping between page hits to keep you safe from rate limits:
+Use the `sync_recipes.py` CLI script to scrape a TikTok playlist. It extracts video links, checks the local database, and visits detailed pages for **new videos only**, sleeping between hits to avoid rate limits:
 
 ```bash
 # Sync playlist with default 5-second delay
 python sync_recipes.py "https://www.tiktok.com/@creator/playlist/1234567"
 
-# Sync with custom rate-limiting (e.g., 10-second delay)
+# Sync with custom delay
 python sync_recipes.py "https://www.tiktok.com/@creator/playlist/1234567" --delay 10.0
+```
+
+### Authentication Cookies (Optional)
+To scrape private playlists or bypass bot verification, export your TikTok session cookies to `tiktok_cookies.json` in the root folder:
+```json
+[
+  {
+    "name": "sessionid",
+    "value": "YOUR_SESSION_ID_HERE",
+    "domain": ".tiktok.com",
+    "path": "/"
+  }
+]
 ```
 
 ---
 
-## Running the Web Application
+## 🔌 Web API Routes
 
-1. **Start the Flask Web Server**:
-
-   ```bash
-   python app.py
-   ```
-
-2. **Access the Web Interface**:
-   Open your browser and navigate to: [http://127.0.0.1:5000/](http://127.0.0.1:5000/)
-
----
-
-## Web API Routes
-
-- `GET /` — Serves the main SPA `interface/index.html`.
-- `GET /recipes_db.json` — Returns the canonical database with macro numbers rounded to integers.
-- `POST /api/recipes/calculate_macros` — Calculates recipe macros dynamically from a list of ingredient dictionaries.
-- `POST /api/recipes/update` — Atomically edits a recipe record, recalculating macros strictly from ingredient items.
-- `GET /api/ingredients/search` — Runs prefix-matching FTS5 queries against `opennutrition.db` to autocomplete frontend ingredient edits.
-- `GET /api/barcode/lookup` — Performs barcode lookup from the local DB or proxies to Open Food Facts API (and caches it locally).
-
-## Automated Ingestion with GitHub Actions
-
-This repository is pre-configured with a GitHub Actions workflow to run the TikTok Recipe Scraper automatically every hour (or manually on-demand).
-
-### Step 1: Set up Repository Secrets
-
-In your GitHub repository, go to **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
-
-- `SUPABASE_URL`: Your Supabase API endpoint URL (e.g. `https://pptghabcewxfaaiplkmi.supabase.co`).
-- `SUPABASE_KEY`: Your Supabase API Service Role key (or anon key if Row-Level Security is disabled/configured to allow anonymous inserts).
-- `GROQ_API_KEY`: Your Groq API key for Llama 3.3 parsing.
-- `SUPADATA_API_KEY`: Your Supadata API key for TikTok video transcript extraction.
-- `TIKTOK_COOKIES_JSON`: A JSON string containing your exported TikTok session cookies (e.g. `[{"name": "...", "value": "..."}]`).
-
-### Step 2: Configure Playlist URL (Optional)
-
-If you want to sync a playlist other than the default hardcoded one, add this repository secret:
-
-- `TIKTOK_PLAYLIST_URL`: The URL of the TikTok collection or playlist to sync.
-
-### Step 3: Trigger Scraper
-
-The workflow runs automatically every hour. To trigger it manually:
-
-1. Navigate to the **Actions** tab of your repository on GitHub.
-2. Select the **TikTok Recipe Scraper** workflow.
-3. Click the **Run workflow** dropdown and click the green button.
-
-Since the scraper is running on GitHub Actions, you only need to host the Flask web application (the frontend and APIs) on Render.
-
-Here are the precise settings to configure your Render Web Service:
-
-1. Create the Web Service
-Log in to the Render Dashboard.
-Click New > Web Service.
-Connect your GitHub repository.
-2. Configure Settings
-Set the following properties in the creation form:
-
-Name: grams-recipe-app
-Region: Choose the one closest to you (e.g., Frankfurt or Oregon)
-Branch: main
-Runtime: Python
-Build Command (Installs requirements and gunicorn production server):
-bash
-pip install -r requirements.txt && pip install gunicorn
-Start Command:
-bash
-gunicorn app:app
-NOTE
-
-You do not need to install Playwright or Chromium on Render because the scraper runs entirely on GitHub Actions. This keeps your build fast and lightweight.
-
-1. Add Environment Variables
-Scroll down to Environment Variables and add the credentials the frontend needs to query Supabase and calculate macros:
-
-Key Value
-SUPABASE_URL Your Supabase Project URL (e.g. <https://pptghabcewxfaaiplkmi.supabase.co>)
-SUPABASE_KEY Your Supabase service_role or anon key
-GROQ_API_KEY Your Groq API key
-PYTHON_VERSION 3.10 (Ensures compatibility)
-Click Create Web Service. Render will deploy your Flask frontend, and your web app will be live at the provided .onrender.com URL.
-
-4:57 PM
+- `GET /` — Serves the main Single Page Application (`interface/index.html`).
+- `GET /recipes_db.json` — Returns all saved recipes with rounded macronutrients.
+- `POST /api/recipes/calculate_macros` — Calculates aggregated macros from ingredient items and quantities.
+- `POST /api/recipes/update` — Updates a recipe record, recalculating macros strictly from ingredient items.
+- `POST /api/recipes/delete` — Deletes a recipe record.
+- `GET /api/ingredients/search?q=<term>` — Full-text search autocomplete against the CIQUAL foods database.
+- `GET /api/barcode/lookup?barcode=<code>` — Barcode lookup with Open Food Facts fallback and local DB caching.
+- `GET /api/manual_check/recipes` — Lists recipes flagged for manual ingredient review.
+- `POST /api/manual_check/approve` — Approves and saves a manually reviewed recipe.
