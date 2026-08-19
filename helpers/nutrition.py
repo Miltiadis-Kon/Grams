@@ -1,8 +1,7 @@
 """
-Nutritional analysis module using the OpenNutrition dataset in Supabase.
+Nutritional analysis module using the OpenNutrition dataset in a local PostgreSQL database.
 
-Zero API keys required for OpenNutrition dataset itself, but requires
-SUPABASE_URL and SUPABASE_KEY to be configured in the environment.
+Requires DATABASE_URL or PG_* environment variables to be configured.
 """
 
 from __future__ import annotations
@@ -17,28 +16,87 @@ from functools import lru_cache
 
 from translate import Translator
 from ingredient_parser import parse_ingredient
-from supabase import create_client, Client
+import psycopg2
+import psycopg2.extras
 
 from database import MacroNutrients
 
 logger = logging.getLogger(__name__)
 
 
+def _get_pg_connection():
+    """Create a new psycopg2 connection from environment variables."""
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url:
+        return psycopg2.connect(database_url)
+    return psycopg2.connect(
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", 5432)),
+        dbname=os.environ.get("PG_DB", "grams"),
+        user=os.environ.get("PG_USER", "grams"),
+        password=os.environ.get("PG_PASSWORD", "grams"),
+    )
+
+
 class NutritionAnalyzer:
     """
-    Nutritional analysis engine backed by the OpenNutrition dataset in Supabase.
+    Nutritional analysis engine backed by the OpenNutrition dataset in PostgreSQL.
     """
 
     def __init__(self) -> None:
-        # Detect environment database configuration
-        self._supabase_url = os.environ.get("SUPABASE_URL")
-        self._supabase_key = os.environ.get("SUPABASE_KEY")
-        if not self._supabase_url or not self._supabase_key:
-            raise ValueError(
-                "SUPABASE_URL and SUPABASE_KEY environment variables are required!\n"
-                "Please specify them in your .env file or environment variables."
-            )
-        self._client: Client = create_client(self._supabase_url, self._supabase_key)
+        # Validate connection on startup
+        try:
+            conn = _get_pg_connection()
+            conn.close()
+            logger.info("NutritionAnalyzer connected to PostgreSQL.")
+        except Exception as exc:
+            raise ConnectionError(
+                f"Cannot connect to PostgreSQL for NutritionAnalyzer. "
+                f"Check DATABASE_URL or PG_* env vars.\n{exc}"
+            ) from exc
+
+    def _query_foods(self, sql: str, params: tuple) -> list[dict]:
+        """Execute a foods query and return list of row dicts."""
+        conn = None
+        try:
+            conn = _get_pg_connection()
+            with conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute(sql, params)
+                    return [dict(row) for row in cur.fetchall()]
+        except Exception as exc:
+            logger.warning("foods query failed: %s | SQL: %s", exc, sql)
+            return []
+        finally:
+            if conn:
+                conn.close()
+
+    def _upsert_food(self, data: dict) -> None:
+        """Upsert a food row (for barcode lookups)."""
+        conn = None
+        try:
+            conn = _get_pg_connection()
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO foods (id, name, protein_g, carbs_g, fat_g, energy_kcal, serving)
+                        VALUES (%(id)s, %(name)s, %(protein_g)s, %(carbs_g)s, %(fat_g)s, %(energy_kcal)s, %(serving)s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            name=EXCLUDED.name,
+                            protein_g=EXCLUDED.protein_g,
+                            carbs_g=EXCLUDED.carbs_g,
+                            fat_g=EXCLUDED.fat_g,
+                            energy_kcal=EXCLUDED.energy_kcal,
+                            serving=EXCLUDED.serving
+                        """,
+                        data
+                    )
+        except Exception as exc:
+            logger.error("upsert_food failed: %s", exc)
+        finally:
+            if conn:
+                conn.close()
 
     # ── Public API ───────────────────────────────────
 
@@ -73,19 +131,18 @@ class NutritionAnalyzer:
     @lru_cache(maxsize=2048)
     def lookup_food(self, query: str, ing_hash: str = None) -> Optional[MacroNutrients]:
         """
-        Search the Supabase foods table for a food item by name or hash.
+        Search the PostgreSQL foods table for a food item by name or hash.
 
         Returns the top match's macros, or None if no match found.
         """
-        try:
-            # 0. Try ID exact match if hash is provided
-            if ing_hash:
-                response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").eq("id", ing_hash).execute()
-                if response.data:
-                    row = response.data[0]
-                    return self._row_to_macros(row, row["name"], query)
-        except Exception as exc:
-            logger.warning("Supabase foods lookup by hash failed for '%s': %s", ing_hash, exc)
+        _SQL = "SELECT id, name, protein_g, carbs_g, fat_g, energy_kcal, serving FROM foods"
+
+        # 0. Try ID exact match if hash is provided
+        if ing_hash:
+            rows = self._query_foods(f"{_SQL} WHERE id = %s LIMIT 1", (ing_hash,))
+            if rows:
+                row = rows[0]
+                return self._row_to_macros(row, row["name"], query)
 
         # Translate Greek queries to English first so they can match the English foods DB
         query_en = self._translate_if_greek(query)
@@ -95,47 +152,43 @@ class NutritionAnalyzer:
         if not sanitized or not re.search(r'[a-zA-Z]', sanitized):
             return None
 
-        try:
-            # 1. Try exact match first
-            response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).eq("name", query_en).execute()
-            if response.data:
-                row = response.data[0]
-                return self._row_to_macros(row, query_en, query)
+        # 1. Try exact match first
+        rows = self._query_foods(f"{_SQL} WHERE name = %s LIMIT 1", (query_en,))
+        if rows:
+            return self._row_to_macros(rows[0], query_en, query)
 
-            # 2. Try text search (FTS)
-            search_words = [w for w in sanitized.split() if w]
-            fts_query = " & ".join(search_words)
-            
-            response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).text_search("name", fts_query).execute()
-            if response.data:
-                row = response.data[0]
-                return self._row_to_macros(row, query_en, query)
+        # 2. Try full-text search (PostgreSQL tsvector)
+        search_words = [w for w in sanitized.split() if w]
+        fts_query = " & ".join(search_words)
+        rows = self._query_foods(
+            f"{_SQL} WHERE to_tsvector('english', name) @@ to_tsquery('english', %s) LIMIT 1",
+            (fts_query,)
+        )
+        if rows:
+            return self._row_to_macros(rows[0], query_en, query)
 
-            # 3. Fallback to ILIKE substring matching
-            response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).ilike("name", f"%{sanitized}%").execute()
-            if response.data:
-                row = response.data[0]
-                return self._row_to_macros(row, query_en, query)
-                
-            # 4. Fallback: try removing the first word (e.g. 'potato gnocchi' -> 'gnocchi')
-            words = sanitized.split()
-            if len(words) > 1:
-                fallback_query = " ".join(words[1:])
-                # 4.a Try exact match on fallback
-                response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).eq("name", fallback_query).execute()
-                if response.data:
-                    row = response.data[0]
-                    return self._row_to_macros(row, fallback_query, query)
-                
-                # 4.b Try text search on fallback
-                fallback_fts = " & ".join(fallback_query.split())
-                response = self._client.table("foods").select("id, name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(1).text_search("name", fallback_fts).execute()
-                if response.data:
-                    row = response.data[0]
-                    return self._row_to_macros(row, fallback_query, query)
+        # 3. Fallback to ILIKE substring matching
+        rows = self._query_foods(f"{_SQL} WHERE name ILIKE %s LIMIT 1", (f"%{sanitized}%",))
+        if rows:
+            return self._row_to_macros(rows[0], query_en, query)
 
-        except Exception as exc:
-            logger.warning("Supabase foods lookup failed for '%s': %s", query_en, exc)
+        # 4. Fallback: try removing the first word (e.g. 'potato gnocchi' -> 'gnocchi')
+        words = sanitized.split()
+        if len(words) > 1:
+            fallback_query = " ".join(words[1:])
+            # 4.a Try exact match on fallback
+            rows = self._query_foods(f"{_SQL} WHERE name = %s LIMIT 1", (fallback_query,))
+            if rows:
+                return self._row_to_macros(rows[0], fallback_query, query)
+
+            # 4.b Try FTS on fallback
+            fallback_fts = " & ".join(fallback_query.split())
+            rows = self._query_foods(
+                f"{_SQL} WHERE to_tsvector('english', name) @@ to_tsquery('english', %s) LIMIT 1",
+                (fallback_fts,)
+            )
+            if rows:
+                return self._row_to_macros(rows[0], fallback_query, query)
 
         return None
 

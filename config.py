@@ -7,19 +7,21 @@ Zero external credentials required — all data sources are local/open.
 
 import os
 
-# Load local environment variables from .env if it exists
+# Load local environment variables from .env.local (preferred) or .env
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-env_path = os.path.join(BASE_DIR, ".env")
-if os.path.exists(env_path):
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, val = line.split("=", 1)
-                os.environ[key.strip()] = val.strip()
+for env_filename in (".env.local", ".env"):
+    env_path = os.path.join(BASE_DIR, env_filename)
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ[key.strip()] = val.strip()
+        break
 
 # ──────────────────────────────────────────────
-# Database & Table Names (Supabase Backend)
+# Database & Table Names (PostgreSQL Backend)
 # ──────────────────────────────────────────────
 RECIPES_TABLE = "recipes"
 NOT_ADDED_RECIPES_TABLE = "not_added_recipes"
@@ -38,8 +40,16 @@ TIKTOK_COOKIES_PATH = os.path.join(BASE_DIR, "tiktok_cookies.json")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # Ollama settings (local LLM used as fallback for recipe parsing via transcript)
-OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "llama3.1"
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1")
+
+# PostgreSQL connection (used as DATABASE_URL or individual PG_* vars)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+PG_HOST = os.environ.get("PG_HOST", "localhost")
+PG_PORT = int(os.environ.get("PG_PORT", 5432))
+PG_DB = os.environ.get("PG_DB", "grams")
+PG_USER = os.environ.get("PG_USER", "grams")
+PG_PASSWORD = os.environ.get("PG_PASSWORD", "grams")
 
 # ──────────────────────────────────────────────
 # HTTP / Download settings

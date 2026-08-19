@@ -6,7 +6,7 @@ from server.services import (
     not_added_db,
     get_analyzer, 
     calculate_recipe_macros_from_ingredients, 
-    save_barcode_to_supabase, 
+    save_barcode_to_db, 
     fetch_tiktok_thumbnail
 )
 
@@ -108,32 +108,34 @@ def search_ingredients():
         words = [w for w in sanitized.split() if w]
         if not words:
             return jsonify({"results": []})
-        
+
+        _SQL = "SELECT name, protein_g, carbs_g, fat_g, energy_kcal, serving FROM foods"
+
+        # Try FTS first
         fts_query = " & ".join(words)
-        response = analyzer._client.table("foods").select("name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(15).text_search("name", fts_query).execute()
-        
-        results = []
-        for row in response.data:
-            results.append({
+        rows = analyzer._query_foods(
+            f"{_SQL} WHERE to_tsvector('english', name) @@ to_tsquery('english', %s) LIMIT 15",
+            (fts_query,)
+        )
+
+        # Fallback to ILIKE
+        if not rows:
+            rows = analyzer._query_foods(
+                f"{_SQL} WHERE name ILIKE %s LIMIT 15",
+                (f"%{q_en}%",)
+            )
+
+        results = [
+            {
                 "name": row.get("name"),
                 "protein": row.get("protein_g") or 0.0,
                 "carbs": row.get("carbs_g") or 0.0,
                 "fats": row.get("fat_g") or 0.0,
                 "calories": int(round(row.get("energy_kcal") or 0)),
                 "serving": row.get("serving")
-            })
-
-        if not results:
-            response = analyzer._client.table("foods").select("name, protein_g, carbs_g, fat_g, energy_kcal, serving").limit(15).ilike("name", f"%{q_en}%").execute()
-            for row in response.data:
-                results.append({
-                    "name": row.get("name"),
-                    "protein": row.get("protein_g") or 0.0,
-                    "carbs": row.get("carbs_g") or 0.0,
-                    "fats": row.get("fat_g") or 0.0,
-                    "calories": int(round(row.get("energy_kcal") or 0)),
-                    "serving": row.get("serving")
-                })
+            }
+            for row in rows
+        ]
 
         return jsonify({"results": results})
     except Exception as e:
@@ -147,9 +149,12 @@ def lookup_barcode():
 
     try:
         analyzer = get_analyzer()
-        response = analyzer._client.table("foods").select("name, protein_g, carbs_g, fat_g, energy_kcal").limit(1).eq("id", barcode).execute()
-        if response.data:
-            row = response.data[0]
+        rows = analyzer._query_foods(
+            "SELECT name, protein_g, carbs_g, fat_g, energy_kcal FROM foods WHERE id = %s LIMIT 1",
+            (barcode,)
+        )
+        if rows:
+            row = rows[0]
             return jsonify({
                 "success": True,
                 "name": row.get("name"),
@@ -159,7 +164,7 @@ def lookup_barcode():
                 "calories": int(round(row.get("energy_kcal") or 0))
             })
     except Exception as e:
-        print(f"Error checking Supabase for barcode: {e}")
+        print(f"Error checking local DB for barcode: {e}")
 
     url = f"https://world.openfoodfacts.org/api/v0/product/{barcode}.json"
     headers = {"User-Agent": "Grams - WebApp - Version 1.0"}
@@ -177,7 +182,7 @@ def lookup_barcode():
                 fats = float(nutriments.get("fat_100g") or 0)
                 calories = float(nutriments.get("energy-kcal_100g") or nutriments.get("energy_100g", 0) / 4.184)
                 
-                save_barcode_to_supabase(barcode, name, protein, carbs, fats, calories)
+                save_barcode_to_db(barcode, name, protein, carbs, fats, calories)
                 
                 return jsonify({
                     "success": True,

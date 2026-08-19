@@ -1,0 +1,60 @@
+﻿# ── Grams — Docker Compose (Local Stack) ──────────────────────
+# Usage:
+#   docker compose up -d           # start in background
+#   docker compose logs -f app     # follow app logs
+#   docker compose down            # stop all services
+
+services:
+
+  # ── PostgreSQL 16 ────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: grams_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DB:-grams}
+      POSTGRES_USER: ${PG_USER:-grams}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-grams}
+    volumes:
+      # Persistent data — survives container restarts
+      - postgres_data:/var/lib/postgresql/data
+      # Auto-initialise schema on first run
+      - ./database/schema_full.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    ports:
+      # Expose PG locally so you can use pgAdmin / psql directly
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-grams} -d ${PG_DB:-grams}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Flask / Gunicorn App ─────────────────────────────────────
+  app:
+    build: .
+    container_name: grams_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # PostgreSQL connection — uses the service name as host
+      DATABASE_URL: postgresql://${PG_USER:-grams}:${PG_PASSWORD:-grams}@postgres:5432/${PG_DB:-grams}
+      # Groq API key for recipe parsing
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      # Ollama (local LLM fallback)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    ports:
+      - "5000:5000"
+    volumes:
+      # Mount source for easy development — remove for production
+      - .:/app
+      # Persist downloaded media/data outside container
+      - ./data:/app/data
+    extra_hosts:
+      # Allow the container to reach Ollama running on the host
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
+    driver: local

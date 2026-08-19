@@ -114,10 +114,10 @@ def calculate_recipe_macros_from_ingredients(ingredients):
         "ingredients": ingredients_breakdown
     }
 
-def save_barcode_to_supabase(barcode, name, protein, carbs, fats, calories):
+def save_barcode_to_db(barcode, name, protein, carbs, fats, calories):
     try:
         analyzer = get_analyzer()
-        data = {
+        analyzer._upsert_food({
             "id": barcode,
             "name": name,
             "protein_g": protein,
@@ -125,10 +125,9 @@ def save_barcode_to_supabase(barcode, name, protein, carbs, fats, calories):
             "fat_g": fats,
             "energy_kcal": calories,
             "serving": None
-        }
-        analyzer._client.table("foods").upsert(data).execute()
+        })
     except Exception as e:
-        logger.error(f"Error saving barcode to Supabase: {e}")
+        logger.error(f"Error saving barcode to local DB: {e}")
 
 @lru_cache(maxsize=512)
 def fetch_tiktok_thumbnail(target_url: str):

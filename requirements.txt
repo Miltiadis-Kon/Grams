@@ -5,5 +5,5 @@ pyktok>=0.0.31
 Flask>=3.0.0
 translate>=3.6.0
 yt-dlp>=2024.3.10
-supabase>=2.3.0
+psycopg2-binary>=2.9.0
 gunicorn

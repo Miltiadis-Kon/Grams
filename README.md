@@ -1,21 +1,66 @@
 # Grams — Recipe Ingestion & Database Engine
 
-Grams is a highly structured, local-first recipe cataloging, nutritional analysis, and meal planning system. It automates scraping TikTok recipe videos, parsing ingredients using Natural Language Processing (NLP), mapping them to a local SQLite food database, auto-tagging diets and methods, and exposing a modern Web UI for searching and filtering.
+Grams is a highly structured, local-first recipe cataloging, nutritional analysis, and meal planning system. It automates scraping TikTok recipe videos, parsing ingredients using Natural Language Processing (NLP), mapping them to a local PostgreSQL food database, auto-tagging diets and methods, and exposing a modern Web UI for searching and filtering.
+
+> **Local Stack**: The entire app runs on your own machine via Docker Compose — no cloud dependencies. Access it from any device via Tailscale.
+
+---
+
+## Quick Start (Docker)
+
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Tailscale](https://tailscale.com/download) (optional, for remote access)
+
+### 1. Configure Environment
+
+```bash
+# Copy and edit local credentials
+cp .env.local .env.local   # already exists — edit PG_PASSWORD and GROQ_API_KEY
+```
+
+### 2. Start the Stack
+
+```bash
+docker compose --env-file .env.local up -d
+```
+
+This starts:
+- **PostgreSQL 16** on `localhost:5432` (data persisted in a Docker volume)
+- **Flask/Gunicorn** app on `http://localhost:5000`
+
+### 3. Migrate Data from Supabase (one-time)
+
+If you have existing data in Supabase, run the migration script:
+
+```bash
+# Requires old SUPABASE_URL + SUPABASE_KEY in .env
+pip install supabase psycopg2-binary
+python scripts/migrate_from_supabase.py
+```
+
+### 4. Access via Tailscale
+
+```bash
+tailscale ip -4   # get your Tailscale IP, e.g. 100.x.y.z
+# Then open: http://100.x.y.z:5000 on any tailnet device
+```
+
+See [TAILSCALE_SETUP.md](TAILSCALE_SETUP.md) for the full guide.
 
 ---
 
 ## Project Structure
 
-The project has been organized into a professional, modular architecture:
-
 ```
 Grams/
 ├── database/                # Persistence & Canonical Schemas
 │   ├── __init__.py          # Database package exports
-│   ├── database.py          # Thread-safe PostgreSQL database engine
+│   ├── postgres_db.py       # Thread-safe PostgreSQL database engine (psycopg2)
+│   ├── schema_full.sql      # Full PostgreSQL schema (auto-applied by Docker)
 │   └── models.py            # Dataclasses matching required schemas
 ├── interface/               # Frontend Assets
-│   ├── index.html           # Modern Web UI (rebranded Macro Finder)
+│   ├── index.html           # Modern Web UI (Macro Finder)
 │   ├── manifest.json        # Progressive Web App manifest
 │   ├── sw.js                # Service Worker for offline/caching support
 │   └── baker.png            # Application logo
@@ -23,18 +68,20 @@ Grams/
 │   ├── __init__.py          # Helpers package exports
 │   ├── engine.py            # RecipeEngine Orchestrator/Facade
 │   ├── ingester.py          # Playwright TikTok Scraper (Playlist/Single)
-│   ├── nutrition.py         # OpenNutrition offline SQLite & FTS5 search
+│   ├── nutrition.py         # OpenNutrition PostgreSQL FTS search
 │   ├── query.py             # Read-only search & filter interfaces
-│   ├── sync.py              # Recipe Sync Pipeline logic
 │   └── tagger.py            # Rule-based auto-tagging engine
-├── data/                    # Heavy Offline Datasets
-│   ├── opennutrition.db     # Local SQLite index for food lookup
-│   └── opennutrition_foods.tsv
-├── app.py                   # Flask Web Server
+├── scripts/
+│   └── migrate_from_supabase.py  # One-time Supabase → PostgreSQL migration
+├── data/                    # Downloaded media & datasets (gitignored)
+├── app.py                   # Flask Web Server entry point
 ├── config.py                # Centralized configurations & paths
-├── sync_recipes.py          # CLI continuous rate-limited synchronization
-├── requirements.txt         # Package dependencies
-└── README.md                # System documentation
+├── Dockerfile               # Container image definition
+├── docker-compose.yml       # Multi-service orchestration
+├── .env.local               # Local secrets (gitignored)
+├── TAILSCALE_SETUP.md       # Tailscale remote access guide
+├── requirements.txt         # Python dependencies
+└── README.md                # This file
 ```
 
 ---
