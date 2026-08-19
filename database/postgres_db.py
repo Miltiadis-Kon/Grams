@@ -42,30 +42,53 @@ def _get_connection():
 
 class RecipeDatabase:
     """
-    Thread-safe, PostgreSQL-backed database for recipe records.
-
-    Maintains the same public API as the old Supabase-backed version.
+    Thread-safe database for recipe records.
+    Uses PostgreSQL when available; automatically falls back to local SQLite (data/recipes.db).
     """
 
     def __init__(self, table_name: str) -> None:
         self._table_name = table_name
         self._lock = threading.Lock()
+        self._use_sqlite = False
+        self._sqlite_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "recipes.db")
 
-        if not HAS_PSYCOPG2:
-            raise ImportError(
-                "psycopg2-binary is not installed. "
-                "Please run `pip install psycopg2-binary` to enable the PostgreSQL backend."
-            )
+        # Try connecting to PostgreSQL first
+        if HAS_PSYCOPG2:
+            try:
+                conn = _get_connection()
+                conn.close()
+                logger.info("RecipeDatabase connected to PostgreSQL for table: %s", self._table_name)
+                return
+            except Exception as exc:
+                logger.info("PostgreSQL unavailable (%s); falling back to local SQLite (data/recipes.db).", exc)
 
-        # Validate connection on startup to fail fast
-        try:
-            conn = _get_connection()
-            conn.close()
-            logger.info("RecipeDatabase connected to PostgreSQL for table: %s", self._table_name)
-        except Exception as exc:
-            raise ConnectionError(
-                f"Cannot connect to PostgreSQL. Check DATABASE_URL or PG_* env vars.\n{exc}"
-            ) from exc
+        self._use_sqlite = True
+        self._init_sqlite()
+
+    def _init_sqlite(self) -> None:
+        """Initialize local SQLite tables and indices."""
+        import sqlite3
+        os.makedirs(os.path.dirname(self._sqlite_path), exist_ok=True)
+        with sqlite3.connect(self._sqlite_path) as conn:
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS {self._table_name} (
+                    recipe_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    url TEXT,
+                    description TEXT,
+                    macros TEXT,
+                    ingredients TEXT,
+                    instructions TEXT,
+                    tags TEXT,
+                    added_on TEXT,
+                    transcript TEXT,
+                    last_processed TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            conn.commit()
+        logger.info("RecipeDatabase SQLite initialized for table: %s at %s", self._table_name, self._sqlite_path)
 
     # Internal helpers
 
@@ -107,6 +130,14 @@ class RecipeDatabase:
 
     def exists(self, recipe_id: str) -> bool:
         """O(1) check whether a recipe ID is already stored."""
+        if self._use_sqlite:
+            import sqlite3
+            with self._lock:
+                with sqlite3.connect(self._sqlite_path) as conn:
+                    cur = conn.cursor()
+                    cur.execute(f"SELECT 1 FROM {self._table_name} WHERE recipe_id = ? LIMIT 1", (recipe_id,))
+                    return cur.fetchone() is not None
+
         conn = None
         with self._lock:
             try:
@@ -141,6 +172,24 @@ class RecipeDatabase:
             recipe_dict.get("transcript", ""),
         )
 
+        if self._use_sqlite:
+            import sqlite3
+            import datetime
+            now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            with self._lock:
+                with sqlite3.connect(self._sqlite_path) as conn:
+                    conn.execute(
+                        f"""
+                        INSERT INTO {self._table_name}
+                            (recipe_id, name, url, description, macros, ingredients, instructions, tags, added_on, transcript, last_processed, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        data + (now_iso, now_iso, now_iso)
+                    )
+                    conn.commit()
+            logger.info("Inserted recipe '%s' to SQLite table '%s'", recipe_id, self._table_name)
+            return
+
         conn = None
         with self._lock:
             try:
@@ -168,6 +217,41 @@ class RecipeDatabase:
     def update(self, recipe_id: str, recipe_data: dict) -> None:
         """Update an existing recipe record."""
         import datetime
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        if self._use_sqlite:
+            import sqlite3
+            with self._lock:
+                with sqlite3.connect(self._sqlite_path) as conn:
+                    conn.execute(
+                        f"""
+                        UPDATE {self._table_name}
+                        SET name=?, url=?, description=?,
+                            macros=?, ingredients=?,
+                            instructions=?, tags=?,
+                            added_on=?, transcript=?,
+                            last_processed=?, updated_at=?
+                        WHERE recipe_id=?
+                        """,
+                        (
+                            recipe_data.get("name"),
+                            recipe_data.get("url"),
+                            recipe_data.get("description"),
+                            json.dumps(recipe_data.get("macros", {})),
+                            json.dumps(recipe_data.get("ingredients", [])),
+                            json.dumps(recipe_data.get("instructions", [])),
+                            json.dumps(recipe_data.get("tags", [])),
+                            recipe_data.get("added_on"),
+                            recipe_data.get("transcript", ""),
+                            now_iso,
+                            now_iso,
+                            recipe_id,
+                        )
+                    )
+                    conn.commit()
+            logger.info("Updated recipe '%s' in SQLite table '%s'", recipe_id, self._table_name)
+            return
+
         data = (
             recipe_data.get("name"),
             recipe_data.get("url"),
@@ -178,7 +262,7 @@ class RecipeDatabase:
             json.dumps(recipe_data.get("tags", [])),
             recipe_data.get("added_on"),
             recipe_data.get("transcript", ""),
-            datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            now_iso,
             recipe_id,
         )
 
@@ -210,6 +294,18 @@ class RecipeDatabase:
 
     def get(self, recipe_id: str) -> Optional[dict]:
         """Retrieve a single recipe by its ID, or None if not found."""
+        if self._use_sqlite:
+            import sqlite3
+            with self._lock:
+                with sqlite3.connect(self._sqlite_path) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute(f"SELECT * FROM {self._table_name} WHERE recipe_id = ?", (recipe_id,))
+                    row = cur.fetchone()
+                    if row:
+                        return self._row_to_dict(dict(row))
+                    return None
+
         conn = None
         with self._lock:
             try:
@@ -233,6 +329,16 @@ class RecipeDatabase:
 
     def get_all(self) -> dict[str, dict]:
         """Return the entire recipe collection."""
+        if self._use_sqlite:
+            import sqlite3
+            with self._lock:
+                with sqlite3.connect(self._sqlite_path) as conn:
+                    conn.row_factory = sqlite3.Row
+                    cur = conn.cursor()
+                    cur.execute(f"SELECT * FROM {self._table_name}")
+                    rows = cur.fetchall()
+                    return {row["recipe_id"]: self._row_to_dict(dict(row)) for row in rows}
+
         conn = None
         with self._lock:
             try:
@@ -251,6 +357,15 @@ class RecipeDatabase:
 
     def count(self) -> int:
         """Return the number of stored recipes."""
+        if self._use_sqlite:
+            import sqlite3
+            with self._lock:
+                with sqlite3.connect(self._sqlite_path) as conn:
+                    cur = conn.cursor()
+                    cur.execute(f"SELECT COUNT(*) FROM {self._table_name}")
+                    res = cur.fetchone()
+                    return res[0] if res else 0
+
         conn = None
         with self._lock:
             try:
@@ -269,6 +384,16 @@ class RecipeDatabase:
 
     def delete(self, recipe_id: str) -> bool:
         """Remove a recipe by its ID. Returns True if removed, False otherwise."""
+        if self._use_sqlite:
+            import sqlite3
+            with self._lock:
+                with sqlite3.connect(self._sqlite_path) as conn:
+                    cur = conn.cursor()
+                    cur.execute(f"DELETE FROM {self._table_name} WHERE recipe_id = ?", (recipe_id,))
+                    deleted = cur.rowcount > 0
+                    conn.commit()
+                    return deleted
+
         conn = None
         with self._lock:
             try:
@@ -291,4 +416,6 @@ class RecipeDatabase:
                     conn.close()
 
     def __repr__(self) -> str:
-        return f"<RecipeDatabase backend=PostgreSQL table={self._table_name}>"
+        backend = "SQLite" if self._use_sqlite else "PostgreSQL"
+        return f"<RecipeDatabase backend={backend} table={self._table_name}>"
+

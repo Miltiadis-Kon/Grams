@@ -40,23 +40,23 @@ def _get_pg_connection():
 
 class NutritionAnalyzer:
     """
-    Nutritional analysis engine backed by the OpenNutrition dataset in PostgreSQL.
+    Nutritional analysis engine backed by USDA FoodData Central (SQLite) and PostgreSQL.
     """
 
     def __init__(self) -> None:
-        # Validate connection on startup
+        self._pg_available = False
         try:
             conn = _get_pg_connection()
             conn.close()
+            self._pg_available = True
             logger.info("NutritionAnalyzer connected to PostgreSQL.")
         except Exception as exc:
-            raise ConnectionError(
-                f"Cannot connect to PostgreSQL for NutritionAnalyzer. "
-                f"Check DATABASE_URL or PG_* env vars.\n{exc}"
-            ) from exc
+            logger.info("PostgreSQL not active for NutritionAnalyzer — using local USDA SQLite database.")
 
     def _query_foods(self, sql: str, params: tuple) -> list[dict]:
         """Execute a foods query and return list of row dicts."""
+        if not getattr(self, "_pg_available", False):
+            return []
         conn = None
         try:
             conn = _get_pg_connection()
@@ -73,6 +73,8 @@ class NutritionAnalyzer:
 
     def _upsert_food(self, data: dict) -> None:
         """Upsert a food row (for barcode lookups)."""
+        if not getattr(self, "_pg_available", False):
+            return
         conn = None
         try:
             conn = _get_pg_connection()
@@ -128,13 +130,94 @@ class NutritionAnalyzer:
                 logger.warning("Translation failed for '%s': %s", text, exc)
         return text
 
+    def _query_usda_sqlite(self, query_en: str) -> Optional[dict]:
+        """Search the local USDA FoodData Central SQLite database (nutrition.db)."""
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "nutrition.db")
+        if not os.path.exists(db_path):
+            return None
+        try:
+            import sqlite3
+            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+            cur = conn.cursor()
+
+            # 1. Try exact description match
+            row = cur.execute(
+                "SELECT fdc_id, description, calories, protein_g, fat_g, carbs_g, fiber_g FROM foods WHERE description = ? LIMIT 1",
+                (query_en,)
+            ).fetchone()
+
+            # 2. Try FTS match
+            if not row:
+                sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_en).strip()
+                search_words = [w for w in sanitized.split() if len(w) > 1]
+                if search_words:
+                    fts_query = " ".join([f'"{w}"*' for w in search_words])
+                    try:
+                        row = cur.execute("""
+                            SELECT f.fdc_id, f.description, f.calories, f.protein_g, f.fat_g, f.carbs_g, f.fiber_g 
+                            FROM foods_fts fts
+                            JOIN foods f ON fts.fdc_id = f.fdc_id
+                            WHERE foods_fts MATCH ?
+                            ORDER BY CASE WHEN f.data_type = 'foundation_food' THEN 0 ELSE 1 END, LENGTH(f.description) ASC
+                            LIMIT 1
+                        """, (fts_query,)).fetchone()
+                    except Exception:
+                        pass
+
+            # 3. Try LIKE substring match
+            if not row:
+                row = cur.execute("""
+                    SELECT fdc_id, description, calories, protein_g, fat_g, carbs_g, fiber_g 
+                    FROM foods 
+                    WHERE description LIKE ? 
+                    ORDER BY CASE WHEN data_type = 'foundation_food' THEN 0 ELSE 1 END, LENGTH(description) ASC
+                    LIMIT 1
+                """, (f"%{query_en}%",)).fetchone()
+
+            if not row:
+                conn.close()
+                return None
+
+            fdc_id, name, kcal, p, f, c, fib = row
+
+            if (kcal is None or kcal <= 0) and (p > 0 or f > 0 or c > 0):
+                kcal = round((p * 4.0) + (c * 4.0) + (f * 9.0), 1)
+
+            # Get portions
+            portions_rows = cur.execute("SELECT portion_name, gram_weight FROM portions WHERE fdc_id = ?", (fdc_id,)).fetchall()
+            conn.close()
+
+            portions_dict = {p_name: weight for p_name, weight in portions_rows}
+            return {
+                "id": f"usda_{fdc_id}",
+                "name": name,
+                "protein_g": p,
+                "fat_g": f,
+                "carbs_g": c,
+                "energy_kcal": kcal,
+                "fiber_g": fib,
+                "serving": json.dumps({"portions": portions_dict}) if portions_dict else "100g",
+                "available_portions": portions_dict
+            }
+        except Exception as e:
+            logger.debug("USDA SQLite query error: %s", e)
+            return None
+
     @lru_cache(maxsize=2048)
     def lookup_food(self, query: str, ing_hash: str = None) -> Optional[MacroNutrients]:
         """
-        Search the PostgreSQL foods table for a food item by name or hash.
+        Search the USDA database (nutrition.db) or PostgreSQL foods table for a food item by name or hash.
 
         Returns the top match's macros, or None if no match found.
         """
+        # Translate Greek queries to English first so they can match the English foods DB
+        query_en = self._translate_if_greek(query)
+
+        # 1. Search USDA FoodData Central dataset first
+        usda_row = self._query_usda_sqlite(query_en)
+        if usda_row:
+            return self._row_to_macros(usda_row, query_en, query)
+
         _SQL = "SELECT id, name, protein_g, carbs_g, fat_g, energy_kcal, serving FROM foods"
 
         # 0. Try ID exact match if hash is provided
@@ -144,20 +227,17 @@ class NutritionAnalyzer:
                 row = rows[0]
                 return self._row_to_macros(row, row["name"], query)
 
-        # Translate Greek queries to English first so they can match the English foods DB
-        query_en = self._translate_if_greek(query)
-
         sanitized = re.sub(r'[^a-zA-Z0-9\s]', ' ', query_en)
         sanitized = ' '.join(sanitized.split()).strip()
         if not sanitized or not re.search(r'[a-zA-Z]', sanitized):
             return None
 
-        # 1. Try exact match first
+        # 2. Try PostgreSQL exact match
         rows = self._query_foods(f"{_SQL} WHERE name = %s LIMIT 1", (query_en,))
         if rows:
             return self._row_to_macros(rows[0], query_en, query)
 
-        # 2. Try full-text search (PostgreSQL tsvector)
+        # 3. Try full-text search (PostgreSQL tsvector)
         search_words = [w for w in sanitized.split() if w]
         fts_query = " & ".join(search_words)
         rows = self._query_foods(
@@ -167,26 +247,20 @@ class NutritionAnalyzer:
         if rows:
             return self._row_to_macros(rows[0], query_en, query)
 
-        # 3. Fallback to ILIKE substring matching
+        # 4. Fallback to ILIKE substring matching
         rows = self._query_foods(f"{_SQL} WHERE name ILIKE %s LIMIT 1", (f"%{sanitized}%",))
         if rows:
             return self._row_to_macros(rows[0], query_en, query)
 
-        # 4. Fallback: try removing the first word (e.g. 'potato gnocchi' -> 'gnocchi')
+        # 5. Fallback: try removing the first word (e.g. 'potato gnocchi' -> 'gnocchi')
         words = sanitized.split()
         if len(words) > 1:
             fallback_query = " ".join(words[1:])
-            # 4.a Try exact match on fallback
-            rows = self._query_foods(f"{_SQL} WHERE name = %s LIMIT 1", (fallback_query,))
-            if rows:
-                return self._row_to_macros(rows[0], fallback_query, query)
+            usda_fb = self._query_usda_sqlite(fallback_query)
+            if usda_fb:
+                return self._row_to_macros(usda_fb, fallback_query, query)
 
-            # 4.b Try FTS on fallback
-            fallback_fts = " & ".join(fallback_query.split())
-            rows = self._query_foods(
-                f"{_SQL} WHERE to_tsvector('english', name) @@ to_tsquery('english', %s) LIMIT 1",
-                (fallback_fts,)
-            )
+            rows = self._query_foods(f"{_SQL} WHERE name = %s LIMIT 1", (fallback_query,))
             if rows:
                 return self._row_to_macros(rows[0], fallback_query, query)
 
@@ -593,21 +667,31 @@ class NutritionAnalyzer:
         if hasattr(amount_obj, 'unit') and amount_obj.unit:
             unit_str = str(amount_obj.unit).lower().strip()
 
-        # Check if the unit refers to default portion / serving / unit
+        # 1. Match USDA household portion conversions from database
+        db_match = self.lookup_food(name_str)
+        if db_match and db_match.serving:
+            try:
+                serving_data = json.loads(db_match.serving) if isinstance(db_match.serving, str) else db_match.serving
+                portions = serving_data.get("portions", {})
+                if portions and unit_str:
+                    for p_name, p_weight in portions.items():
+                        p_clean = p_name.lower()
+                        if unit_str in p_clean or p_clean in unit_str:
+                            return qty * float(p_weight)
+            except Exception:
+                pass
+
+        # 2. Check if the unit refers to default portion / serving / unit
         if unit_str in ["serving", "servings", "portion", "portions", "unit", "units", "piece", "pieces"]:
-            db_match = self.lookup_food(name_str)
             if db_match and db_match.serving:
                 try:
-                    import json
-                    serving_data = json.loads(db_match.serving)
-                    # Try metric first (grams / ml)
+                    serving_data = json.loads(db_match.serving) if isinstance(db_match.serving, str) else db_match.serving
                     metric = serving_data.get("metric", {})
                     if metric:
                         m_qty = float(metric.get("quantity", 100.0))
                         m_unit = str(metric.get("unit", "g")).lower().strip()
                         if m_unit in ["g", "ml", "grams"]:
                             return qty * m_qty
-                    # Try common unit conversion
                     common = serving_data.get("common", {})
                     if common:
                         c_qty = float(common.get("quantity", 1.0))
@@ -655,15 +739,11 @@ class NutritionAnalyzer:
         }
 
         if not unit_str:
-            # If the quantity is large (e.g. >= 15) and unit is empty, it's almost certainly grams/ml
             if qty >= 15.0:
                 return qty
-            # Check if there is a default serving in DB even for unitless input
-            db_match = self.lookup_food(name_str)
             if db_match and db_match.serving:
                 try:
-                    import json
-                    serving_data = json.loads(db_match.serving)
+                    serving_data = json.loads(db_match.serving) if isinstance(db_match.serving, str) else db_match.serving
                     metric = serving_data.get("metric", {})
                     if metric:
                         m_qty = float(metric.get("quantity", 100.0))
@@ -704,15 +784,12 @@ class NutritionAnalyzer:
             if not cleaned or len(cleaned) < 3:
                 continue
 
-            # Strip leading quantities: "100g chicken" → "chicken"
-            # "2 cups rice" → "rice", "1/2 cup oats" → "oats"
             cleaned = re.sub(
                 r"^\d+[\./]?\d*\s*(g|kg|oz|ml|l|cup|cups|tbsp|tsp|tablespoon|teaspoon|pound|lb|lbs)\s+",
                 "",
                 cleaned,
                 flags=re.IGNORECASE,
             )
-            # Strip standalone leading numbers: "2 chicken breast" → "chicken breast"
             cleaned = re.sub(r"^\d+[\./]?\d*\s+", "", cleaned)
 
             cleaned = cleaned.strip()
@@ -730,6 +807,77 @@ class NutritionAnalyzer:
         return int((protein * 4) + (carbs * 4) + (fats * 9))
 
     def close(self) -> None:
-        """No-op as Supabase client is connectionless HTTP."""
         pass
+
+
+# ── Global Utility Functions ─────────────────────────
+
+_global_analyzer: Optional[NutritionAnalyzer] = None
+
+def _get_analyzer() -> NutritionAnalyzer:
+    global _global_analyzer
+    if _global_analyzer is None:
+        _global_analyzer = NutritionAnalyzer()
+    return _global_analyzer
+
+def get_food_nutrition(food_search_term: str) -> dict | str:
+    """Query USDA food database and return 100g macros & available household portions."""
+    analyzer = _get_analyzer()
+    usda_data = analyzer._query_usda_sqlite(food_search_term)
+    if not usda_data:
+        match = analyzer.lookup_food(food_search_term)
+        if not match:
+            return f"No food found matching '{food_search_term}'"
+        return {
+            "food_name": match.food_name or food_search_term,
+            "base_100g": {"calories": match.calories, "protein": match.protein, "fat": match.fats, "carbs": match.carbs, "fiber": 0.0},
+            "available_portions": {}
+        }
+
+    return {
+        "food_name": usda_data["name"],
+        "base_100g": {
+            "calories": usda_data["energy_kcal"],
+            "protein": usda_data["protein_g"],
+            "fat": usda_data["fat_g"],
+            "carbs": usda_data["carbs_g"],
+            "fiber": usda_data["fiber_g"],
+        },
+        "available_portions": usda_data.get("available_portions", {})
+    }
+
+def calculate_recipe_item(food_search_term: str, amount: float, unit: str) -> dict | str:
+    """Calculate exact grams and macros for a recipe item given amount and unit."""
+    data = get_food_nutrition(food_search_term)
+    if isinstance(data, str):
+        return data
+
+    # Resolve weight in grams
+    if unit in ["g", "gram", "grams"]:
+        weight = float(amount)
+    elif unit in ["kg", "kilogram", "kilograms"]:
+        weight = float(amount) * 1000.0
+    else:
+        # Match nearest portion (e.g. "medium", "cup", "tbsp", "slice")
+        matched_weight = None
+        for portion_desc, grams in data.get("available_portions", {}).items():
+            if unit.lower() in portion_desc.lower():
+                matched_weight = float(grams)
+                break
+        
+        weight = float(amount) * (matched_weight if matched_weight else 100.0)
+
+    # Scale macros
+    factor = weight / 100.0
+    base = data["base_100g"]
+
+    return {
+        "item": data["food_name"],
+        "calculated_weight_g": round(weight, 1),
+        "calories": round(base["calories"] * factor, 1),
+        "protein_g": round(base["protein"] * factor, 1),
+        "fat_g": round(base["fat"] * factor, 1),
+        "carbs_g": round(base["carbs"] * factor, 1),
+        "fiber_g": round(base["fiber"] * factor, 1),
+    }
 
