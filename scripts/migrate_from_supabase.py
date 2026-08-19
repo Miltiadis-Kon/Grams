@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 migrate_from_supabase.py — One-time data migration from Supabase → local PostgreSQL.
 
@@ -180,13 +180,19 @@ def migrate_foods_table():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("Grams — Supabase → Local PostgreSQL Migration")
+    print("Grams - Supabase -> Local PostgreSQL Migration")
     print("=" * 60)
 
     migrate_recipes_table("recipes", "recipes")
     migrate_recipes_table("not_added_recipes", "not_added_recipes")
-    migrate_foods_table()
+
+    # Only migrate old foods table if explicitly requested with --include-old-foods
+    if "--include-old-foods" in sys.argv:
+        migrate_foods_table()
+    else:
+        print("\nNote: Skipping legacy foods table (using curated CIQUAL foods table instead).")
+        print("To seed CIQUAL foods, run: python scripts/seed_ciqual_to_postgres.py")
 
     pg.close()
-    print("\n✅ Migration complete!")
+    print("\n[OK] Migration complete!")
     print("You can now run `docker compose up` and your data will be available locally.")

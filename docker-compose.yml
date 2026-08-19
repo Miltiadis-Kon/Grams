@@ -1,4 +1,4 @@
-﻿# ── Grams — Docker Compose (Local Stack) ──────────────────────
+# ── Grams — Docker Compose (Local Stack) ──────────────────────
 # Usage:
 #   docker compose up -d           # start in background
 #   docker compose logs -f app     # follow app logs
@@ -20,6 +20,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       # Auto-initialise schema on first run
       - ./database/schema_full.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/ciqual_foods_seed.sql:/docker-entrypoint-initdb.d/02_ciqual_foods.sql:ro
     ports:
       # Expose PG locally so you can use pgAdmin / psql directly
       - "5432:5432"

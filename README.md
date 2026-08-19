@@ -58,6 +58,7 @@ Grams/
 │   ├── __init__.py          # Database package exports
 │   ├── postgres_db.py       # Thread-safe PostgreSQL database engine (psycopg2)
 │   ├── schema_full.sql      # Full PostgreSQL schema (auto-applied by Docker)
+│   ├── ciqual_foods_seed.sql # Curated CIQUAL 3,484 whole foods dataset seed
 │   └── models.py            # Dataclasses matching required schemas
 ├── interface/               # Frontend Assets
 │   ├── index.html           # Modern Web UI (Macro Finder)
@@ -68,11 +69,12 @@ Grams/
 │   ├── __init__.py          # Helpers package exports
 │   ├── engine.py            # RecipeEngine Orchestrator/Facade
 │   ├── ingester.py          # Playwright TikTok Scraper (Playlist/Single)
-│   ├── nutrition.py         # OpenNutrition PostgreSQL FTS search
+│   ├── nutrition.py         # Curated CIQUAL PostgreSQL FTS search
 │   ├── query.py             # Read-only search & filter interfaces
 │   └── tagger.py            # Rule-based auto-tagging engine
 ├── scripts/
-│   └── migrate_from_supabase.py  # One-time Supabase → PostgreSQL migration
+│   ├── seed_ciqual_to_postgres.py  # CIQUAL dataset seeder / exporter
+│   └── migrate_from_supabase.py   # One-time Supabase → PostgreSQL migration
 ├── data/                    # Downloaded media & datasets (gitignored)
 ├── app.py                   # Flask Web Server entry point
 ├── config.py                # Centralized configurations & paths
