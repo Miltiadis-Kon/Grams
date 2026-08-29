@@ -54,7 +54,7 @@ def calculate_recipe_macros_from_ingredients(ingredients):
         except Exception:
             pass
             
-        grams = analyzer._get_ingredient_grams(amount_obj, name)
+        grams = analyzer._get_ingredient_grams(amount_obj, name, qty_str)
         scale = grams / 100.0
         
         db_match = analyzer.lookup_food(name, ing_hash if ing_hash else None)

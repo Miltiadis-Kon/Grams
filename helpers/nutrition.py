@@ -206,21 +206,215 @@ class NutritionAnalyzer:
     @lru_cache(maxsize=2048)
     def lookup_food(self, query: str, ing_hash: str = None) -> Optional[MacroNutrients]:
         """
-        Search the USDA database (nutrition.db) or PostgreSQL foods table for a food item by name or hash.
-
+        Search canonical culinary mappings, USDA dataset, or PostgreSQL foods table for a food item.
         Returns the top match's macros, or None if no match found.
         """
         # Translate Greek queries to English first so they can match the English foods DB
         query_en = self._translate_if_greek(query)
+        q_clean = query_en.lower().strip()
 
-        # 1. Search USDA FoodData Central dataset first
+        # 0. Canonical High-Precision Culinary Mappings
+        canonical_map = {
+            # Meats & Poultry
+            r'\b(?:chicken\s+thighs?|boneless\s+skinless\s+chicken\s+thighs?)\b': {
+                "id": "canon_chicken_thigh", "name": "Chicken thigh, meat only, raw",
+                "protein_g": 20.0, "carbs_g": 0.0, "fat_g": 4.5, "energy_kcal": 121.0
+            },
+            r'\b(?:chicken\s+breasts?|boneless\s+skinless\s+chicken\s+breasts?)\b': {
+                "id": "ciqual_36029", "name": "Chicken, breast, meat, raw",
+                "protein_g": 22.5, "carbs_g": 0.0, "fat_g": 2.5, "energy_kcal": 114.0
+            },
+            r'\b(?:ground\s+beef|beef\s+mince|95/5|90/10|lean\s+ground\s+beef|extra\s+lean\s+ground\s+beef)\b': {
+                "id": "ciqual_6202", "name": "Beef, ground, 5% fat, raw",
+                "protein_g": 21.5, "carbs_g": 0.0, "fat_g": 5.0, "energy_kcal": 137.0
+            },
+            r'\b(?:ground\s+turkey|turkey\s+breast|turkey\s+mince)\b': {
+                "id": "ciqual_36007", "name": "Turkey, breast, meat, raw",
+                "protein_g": 24.0, "carbs_g": 0.0, "fat_g": 1.5, "energy_kcal": 111.0
+            },
+            r'\b(?:salmon|salmon\s+fillet|raw\s+salmon)\b': {
+                "id": "ciqual_26048", "name": "Salmon, raw",
+                "protein_g": 20.0, "carbs_g": 0.0, "fat_g": 12.0, "energy_kcal": 188.0
+            },
+            r'\b(?:tuna|canned\s+tuna|tuna\s+in\s+water)\b': {
+                "id": "ciqual_26058", "name": "Tuna, canned in water, drained",
+                "protein_g": 25.5, "carbs_g": 0.0, "fat_g": 0.8, "energy_kcal": 110.0
+            },
+            r'\b(?:shrimp|prawns?)\b': {
+                "id": "ciqual_26017", "name": "Shrimp, raw",
+                "protein_g": 20.0, "carbs_g": 0.9, "fat_g": 1.0, "energy_kcal": 93.0
+            },
+            # Grains & Pastas
+            r'\b(?:pasta|macaroni|elbow\s+mac|spaghetti|penne|rotini|fusilli|fettuccine|rigatoni|orzo|noodles?)\b': {
+                "id": "ciqual_9863", "name": "Pasta, plain, raw",
+                "protein_g": 13.0, "carbs_g": 72.0, "fat_g": 1.5, "energy_kcal": 360.0
+            },
+            r'\b(?:rice|white\s+rice|jasmine\s+rice|basmati\s+rice)\b': {
+                "id": "ciqual_9100", "name": "Rice, white, raw",
+                "protein_g": 7.0, "carbs_g": 78.0, "fat_g": 0.6, "energy_kcal": 355.0
+            },
+            r'\b(?:oats|rolled\s+oats|quick\s+oats|oatmeal)\b': {
+                "id": "ciqual_9311", "name": "Oats, raw",
+                "protein_g": 13.5, "carbs_g": 60.0, "fat_g": 7.0, "energy_kcal": 375.0
+            },
+            r'\b(?:flour|all[\s\-]purpose\s+flour|plain\s+flour|wheat\s+flour)\b': {
+                "id": "ciqual_9410", "name": "Wheat flour, all-purpose",
+                "protein_g": 10.5, "carbs_g": 73.0, "fat_g": 1.2, "energy_kcal": 350.0
+            },
+            r'\b(?:cornstarch|corn\s+starch|starch)\b': {
+                "id": "canon_cornstarch", "name": "Cornstarch",
+                "protein_g": 0.3, "carbs_g": 88.0, "fat_g": 0.1, "energy_kcal": 381.0
+            },
+            # Dairy & Cheeses
+            r'\b(?:evaporated\s+milk|condensed\s+milk\s+unsweetened)\b': {
+                "id": "canon_evap_milk", "name": "Evaporated milk, unsweetened",
+                "protein_g": 6.8, "carbs_g": 10.0, "fat_g": 7.5, "energy_kcal": 134.0
+            },
+            r'\b(?:milk|whole\s+milk|semi[\s\-]skimmed\s+milk|skim\s+milk|1%\s+milk|2%\s+milk)\b': {
+                "id": "ciqual_19023", "name": "Milk, semi-skimmed, pasteurised",
+                "protein_g": 3.3, "carbs_g": 4.8, "fat_g": 1.6, "energy_kcal": 47.0
+            },
+            r'\b(?:greek\s+yogurt|0%\s+greek\s+yogurt|nonfat\s+greek\s+yogurt)\b': {
+                "id": "canon_greek_yogurt", "name": "Greek yogurt, 0% fat, plain",
+                "protein_g": 10.0, "carbs_g": 3.6, "fat_g": 0.4, "energy_kcal": 59.0
+            },
+            r'\b(?:cottage\s+cheese|low\s+fat\s+cottage\s+cheese)\b': {
+                "id": "canon_cottage_cheese", "name": "Cottage cheese, low fat",
+                "protein_g": 12.0, "carbs_g": 3.4, "fat_g": 1.5, "energy_kcal": 75.0
+            },
+            r'\b(?:parmesan|parmesan\s+cheese|parmigiano)\b': {
+                "id": "ciqual_12120", "name": "Parmesan cheese",
+                "protein_g": 31.0, "carbs_g": 1.1, "fat_g": 31.0, "energy_kcal": 413.0
+            },
+            r'\b(?:cheddar|cheddar\s+cheese)\b': {
+                "id": "ciqual_12726", "name": "Cheddar cheese",
+                "protein_g": 25.0, "carbs_g": 1.2, "fat_g": 33.0, "energy_kcal": 401.0
+            },
+            r'\b(?:mozzarella|mozzarella\s+cheese|shredded\s+mozzarella)\b': {
+                "id": "ciqual_12118", "name": "Mozzarella cheese",
+                "protein_g": 22.0, "carbs_g": 2.0, "fat_g": 21.0, "energy_kcal": 285.0
+            },
+            # Oils & Fats
+            r'\b(?:olive\s+oil|extra\s+virgin\s+olive\s+oil|evoo)\b': {
+                "id": "ciqual_17270", "name": "Olive oil, extra virgin",
+                "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 100.0, "energy_kcal": 884.0
+            },
+            r'\b(?:butter|unsalted\s+butter|salted\s+butter)\b': {
+                "id": "ciqual_16400", "name": "Butter",
+                "protein_g": 0.8, "carbs_g": 0.7, "fat_g": 82.0, "energy_kcal": 745.0
+            },
+            # Eggs
+            r'\b(?:eggs?|whole\s+eggs?)\b': {
+                "id": "ciqual_22000", "name": "Egg, whole, raw",
+                "protein_g": 12.6, "carbs_g": 0.7, "fat_g": 9.9, "energy_kcal": 143.0
+            },
+            r'\b(?:egg\s+whites?|liquid\s+egg\s+whites?)\b': {
+                "id": "ciqual_22001", "name": "Egg white, raw",
+                "protein_g": 10.9, "carbs_g": 0.7, "fat_g": 0.2, "energy_kcal": 48.0
+            },
+            # Protein Powders & Supplements
+            r'\b(?:whey\s+protein|protein\s+powder|vanilla\s+protein\s+powder|chocolate\s+protein\s+powder|casein)\b': {
+                "id": "canon_whey", "name": "Whey protein powder",
+                "protein_g": 80.0, "carbs_g": 6.0, "fat_g": 3.0, "energy_kcal": 375.0
+            },
+            # Cocoa & Chocolate
+            r'\b(?:cocoa\s+powder|unsweetened\s+cocoa\s+powder|cacao)\b': {
+                "id": "ciqual_18100", "name": "Cocoa powder, unsweetened",
+                "protein_g": 19.6, "carbs_g": 13.7, "fat_g": 20.6, "energy_kcal": 314.0
+            },
+            r'\b(?:dark\s+chocolate|chocolate\s+chips)\b': {
+                "id": "ciqual_31074", "name": "Dark chocolate, 70% cocoa",
+                "protein_g": 8.0, "carbs_g": 35.0, "fat_g": 42.0, "energy_kcal": 570.0
+            },
+            # Spices & Seasonings
+            r'\b(?:garlic\s+powder)\b': {
+                "id": "canon_garlic_powder", "name": "Garlic powder",
+                "protein_g": 17.0, "carbs_g": 73.0, "fat_g": 0.7, "energy_kcal": 331.0
+            },
+            r'\b(?:onion\s+powder)\b': {
+                "id": "canon_onion_powder", "name": "Onion powder",
+                "protein_g": 10.0, "carbs_g": 79.0, "fat_g": 1.0, "energy_kcal": 341.0
+            },
+            r'\b(?:smoked\s+paprika|paprika|cayenne|chili\s+powder)\b': {
+                "id": "canon_paprika", "name": "Paprika / Chili powder",
+                "protein_g": 14.0, "carbs_g": 54.0, "fat_g": 13.0, "energy_kcal": 282.0
+            },
+            r'\b(?:black\s+pepper|ground\s+black\s+pepper|pepper)\b': {
+                "id": "ciqual_11065", "name": "Black pepper, ground",
+                "protein_g": 10.4, "carbs_g": 64.0, "fat_g": 3.3, "energy_kcal": 251.0
+            },
+            r'\b(?:salt|sea\s+salt|kosher\s+salt)\b': {
+                "id": "ciqual_11058", "name": "Salt",
+                "protein_g": 0.0, "carbs_g": 0.0, "fat_g": 0.0, "energy_kcal": 0.0
+            },
+            # Condiments & Sweeteners
+            r'\b(?:light\s+mayo|light\s+mayonnaise|low\s+fat\s+mayo)\b': {
+                "id": "ciqual_11079", "name": "Mayonnaise, light / reduced fat",
+                "protein_g": 1.0, "carbs_g": 8.0, "fat_g": 30.0, "energy_kcal": 300.0
+            },
+            r'\b(?:sriracha|hot\s+sauce)\b': {
+                "id": "canon_sriracha", "name": "Sriracha hot chili sauce",
+                "protein_g": 1.5, "carbs_g": 28.0, "fat_g": 1.0, "energy_kcal": 125.0
+            },
+            r'\b(?:dijon\s+mustard|mustard|yellow\s+mustard)\b': {
+                "id": "ciqual_11054", "name": "Mustard, prepared",
+                "protein_g": 6.0, "carbs_g": 5.0, "fat_g": 6.5, "energy_kcal": 105.0
+            },
+            r'\b(?:soy\s+sauce|tamari|low\s+sodium\s+soy\s+sauce)\b': {
+                "id": "ciqual_11082", "name": "Soy sauce",
+                "protein_g": 8.0, "carbs_g": 8.0, "fat_g": 0.1, "energy_kcal": 65.0
+            },
+            r'\b(?:honey)\b': {
+                "id": "ciqual_31008", "name": "Honey",
+                "protein_g": 0.3, "carbs_g": 82.0, "fat_g": 0.0, "energy_kcal": 304.0
+            },
+            r'\b(?:peanut\s+butter|pb2|peanut\s+paste)\b': {
+                "id": "ciqual_15025", "name": "Peanut butter",
+                "protein_g": 25.0, "carbs_g": 14.0, "fat_g": 50.0, "energy_kcal": 590.0
+            },
+            # Produce & Breads
+            r'\b(?:potatoes?|russet\s+potatoes?|baby\s+potatoes?)\b': {
+                "id": "ciqual_4003", "name": "Potato, raw",
+                "protein_g": 2.0, "carbs_g": 17.5, "fat_g": 0.1, "energy_kcal": 80.0
+            },
+            r'\b(?:sweet\s+potatoes?)\b': {
+                "id": "ciqual_4005", "name": "Sweet potato, raw",
+                "protein_g": 1.6, "carbs_g": 20.0, "fat_g": 0.1, "energy_kcal": 86.0
+            },
+            r'\b(?:broccoli|broccoli\s+florets)\b': {
+                "id": "ciqual_20003", "name": "Broccoli, raw",
+                "protein_g": 2.8, "carbs_g": 4.0, "fat_g": 0.4, "energy_kcal": 34.0
+            },
+            r'\b(?:spinach|baby\s+spinach)\b': {
+                "id": "ciqual_20015", "name": "Spinach, raw",
+                "protein_g": 2.9, "carbs_g": 1.4, "fat_g": 0.4, "energy_kcal": 23.0
+            },
+            r'\b(?:bananas?|ripe\s+bananas?)\b': {
+                "id": "ciqual_13005", "name": "Banana, raw",
+                "protein_g": 1.1, "carbs_g": 22.0, "fat_g": 0.3, "energy_kcal": 89.0
+            },
+            r'\b(?:brioche\s+buns?|burger\s+buns?|hamburger\s+buns?|hot\s+dog\s+buns?|buns?)\b': {
+                "id": "ciqual_24000", "name": "Burger bun / Brioche",
+                "protein_g": 8.0, "carbs_g": 50.0, "fat_g": 6.0, "energy_kcal": 280.0
+            },
+            r'\b(?:tortillas?|wraps?|flour\s+tortillas?)\b': {
+                "id": "ciqual_24010", "name": "Tortilla wrap",
+                "protein_g": 7.5, "carbs_g": 52.0, "fat_g": 7.0, "energy_kcal": 300.0
+            }
+        }
+
+        for pat, data in canonical_map.items():
+            if re.search(pat, q_clean):
+                return self._row_to_macros(data, data["name"], query)
+
+        # 1. Search USDA FoodData Central dataset
         usda_row = self._query_usda_sqlite(query_en)
         if usda_row:
             return self._row_to_macros(usda_row, query_en, query)
 
         _SQL = "SELECT id, name, protein_g, carbs_g, fat_g, energy_kcal, serving FROM foods"
 
-        # 0. Try ID exact match if hash is provided
+        # 2. Try ID exact match if hash is provided
         if ing_hash:
             rows = self._query_foods(f"{_SQL} WHERE id = %s LIMIT 1", (ing_hash,))
             if rows:
@@ -232,35 +426,44 @@ class NutritionAnalyzer:
         if not sanitized or not re.search(r'[a-zA-Z]', sanitized):
             return None
 
-        # 2. Try PostgreSQL exact match
-        rows = self._query_foods(f"{_SQL} WHERE name = %s LIMIT 1", (query_en,))
+        # 3. Try PostgreSQL with plain food / foundation ranking (avoiding prepacked/composite dishes)
+        rank_order = """
+            ORDER BY 
+                CASE WHEN lower(name) = lower(%s) THEN 0 ELSE 1 END,
+                CASE WHEN name ILIKE '%%prepacked%%' OR name ILIKE '%%bolognese%%' OR name ILIKE '%%carbonara%%' OR name ILIKE '%%sauce%%' OR name ILIKE '%%soup%%' OR name ILIKE '%%baby meal%%' THEN 1 ELSE 0 END,
+                LENGTH(name) ASC
+            LIMIT 1
+        """
+
+        # Exact match
+        rows = self._query_foods(f"{_SQL} WHERE name ILIKE %s {rank_order}", (f"{query_en}", query_en))
         if rows:
             return self._row_to_macros(rows[0], query_en, query)
 
-        # 3. Try full-text search (PostgreSQL tsvector)
+        # Full-text search (PostgreSQL tsvector)
         search_words = [w for w in sanitized.split() if w]
         fts_query = " & ".join(search_words)
         rows = self._query_foods(
-            f"{_SQL} WHERE to_tsvector('english', name) @@ to_tsquery('english', %s) LIMIT 1",
-            (fts_query,)
+            f"{_SQL} WHERE to_tsvector('english', name) @@ to_tsquery('english', %s) {rank_order}",
+            (fts_query, query_en)
         )
         if rows:
             return self._row_to_macros(rows[0], query_en, query)
 
-        # 4. Fallback to ILIKE substring matching
-        rows = self._query_foods(f"{_SQL} WHERE name ILIKE %s LIMIT 1", (f"%{sanitized}%",))
+        # ILIKE substring matching
+        rows = self._query_foods(f"{_SQL} WHERE name ILIKE %s {rank_order}", (f"%{sanitized}%", query_en))
         if rows:
             return self._row_to_macros(rows[0], query_en, query)
 
-        # 5. Fallback: try removing the first word (e.g. 'potato gnocchi' -> 'gnocchi')
+        # Fallback: try removing descriptor words
         words = sanitized.split()
         if len(words) > 1:
             fallback_query = " ".join(words[1:])
-            usda_fb = self._query_usda_sqlite(fallback_query)
-            if usda_fb:
-                return self._row_to_macros(usda_fb, fallback_query, query)
+            for pat, data in canonical_map.items():
+                if re.search(pat, fallback_query):
+                    return self._row_to_macros(data, data["name"], query)
 
-            rows = self._query_foods(f"{_SQL} WHERE name = %s LIMIT 1", (fallback_query,))
+            rows = self._query_foods(f"{_SQL} WHERE name ILIKE %s {rank_order}", (f"%{fallback_query}%", fallback_query))
             if rows:
                 return self._row_to_macros(rows[0], fallback_query, query)
 
@@ -715,7 +918,13 @@ class NutritionAnalyzer:
             if count_match:
                 cnt = float(count_match.group(1))
                 c_name = name_str.lower()
-                return cnt * 50.0 if "egg" in c_name else (cnt * 0.5 if "salt" in c_name else cnt * 100.0)
+                if "egg" in c_name:
+                    return cnt * 50.0
+                elif any(kw in c_name for kw in ["salt", "pepper", "powder", "paprika", "spice", "herb", "seasoning", "cinnamon"]):
+                    return cnt * 1.0
+                elif any(kw in c_name for kw in ["bun", "tortilla", "wrap", "slice", "cookie", "muffin"]):
+                    return cnt * 50.0
+                return cnt * 100.0
 
         qty = 1.0
         if hasattr(amount_obj, 'quantity') and amount_obj.quantity:
