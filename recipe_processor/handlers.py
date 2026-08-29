@@ -265,11 +265,15 @@ class PersistenceHandler(BaseHandler):
             metadata=metadata,
         )
 
-        is_filled = not (
-            recipe.macros.protein == 0.0 and
-            recipe.macros.carbs == 0.0 and
-            recipe.macros.fats == 0.0 and
-            recipe.macros.calories == 0
+        is_filled = bool(
+            context.ingredients and
+            len(context.ingredients) >= 1 and
+            not (
+                recipe.macros.protein == 0.0 and
+                recipe.macros.carbs == 0.0 and
+                recipe.macros.fats == 0.0 and
+                recipe.macros.calories == 0
+            )
         )
 
         if is_filled:
@@ -282,10 +286,12 @@ class PersistenceHandler(BaseHandler):
             logger.info("ADDED/UPDATED: Recipe '%s' (%s) — %d tags (last_processed updated: %s)", context.recipe_id, context.name, len(recipe.tags), context.update_last_processed)
             context.status = True
         else:
+            if self._db.exists(context.recipe_id):
+                self._db.delete(context.recipe_id)
             if self._not_added_db.exists(context.recipe_id):
                 self._not_added_db.delete(context.recipe_id)
             self._not_added_db.insert(context.recipe_id, recipe, update_last_processed=context.update_last_processed)
-            logger.info("NOT ADDED (Unfilled): Recipe '%s' (%s) saved/updated in manual check list (last_processed updated: %s)", context.recipe_id, context.name, context.update_last_processed)
+            logger.info("ROUTED TO MANUAL REVIEW: Recipe '%s' (%s) saved in manual check list (last_processed updated: %s)", context.recipe_id, context.name, context.update_last_processed)
             context.status = None
 
         self.next(context)

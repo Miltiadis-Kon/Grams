@@ -220,9 +220,13 @@ class NutritionAnalyzer:
                 "id": "canon_chicken_thigh", "name": "Chicken thigh, meat only, raw",
                 "protein_g": 20.0, "carbs_g": 0.0, "fat_g": 4.5, "energy_kcal": 121.0
             },
-            r'\b(?:chicken\s+breasts?|boneless\s+skinless\s+chicken\s+breasts?)\b': {
+            r'\b(?:chicken\s+breasts?|chicken\s+tenderloins?|tenderloins?|boneless\s+skinless\s+chicken\s+breasts?)\b': {
                 "id": "ciqual_36029", "name": "Chicken, breast, meat, raw",
                 "protein_g": 22.5, "carbs_g": 0.0, "fat_g": 2.5, "energy_kcal": 114.0
+            },
+            r'\b(?:cornflakes?|corn\s+flakes?)\b': {
+                "id": "ciqual_9200", "name": "Cornflakes cereal",
+                "protein_g": 8.0, "carbs_g": 84.0, "fat_g": 0.9, "energy_kcal": 380.0
             },
             r'\b(?:ground\s+beef|beef\s+mince|95/5|90/10|lean\s+ground\s+beef|extra\s+lean\s+ground\s+beef)\b': {
                 "id": "ciqual_6202", "name": "Beef, ground, 5% fat, raw",
@@ -304,13 +308,13 @@ class NutritionAnalyzer:
                 "protein_g": 0.8, "carbs_g": 0.7, "fat_g": 82.0, "energy_kcal": 745.0
             },
             # Eggs
-            r'\b(?:eggs?|whole\s+eggs?)\b': {
-                "id": "ciqual_22000", "name": "Egg, whole, raw",
-                "protein_g": 12.6, "carbs_g": 0.7, "fat_g": 9.9, "energy_kcal": 143.0
-            },
             r'\b(?:egg\s+whites?|liquid\s+egg\s+whites?)\b': {
                 "id": "ciqual_22001", "name": "Egg white, raw",
                 "protein_g": 10.9, "carbs_g": 0.7, "fat_g": 0.2, "energy_kcal": 48.0
+            },
+            r'\b(?:eggs?|whole\s+eggs?)\b(?!\s*whites?)': {
+                "id": "ciqual_22000", "name": "Egg, whole, raw",
+                "protein_g": 12.6, "carbs_g": 0.7, "fat_g": 9.9, "energy_kcal": 143.0
             },
             # Protein Powders & Supplements
             r'\b(?:whey\s+protein|protein\s+powder|vanilla\s+protein\s+powder|chocolate\s+protein\s+powder|casein)\b': {
@@ -339,7 +343,7 @@ class NutritionAnalyzer:
                 "id": "canon_paprika", "name": "Paprika / Chili powder",
                 "protein_g": 14.0, "carbs_g": 54.0, "fat_g": 13.0, "energy_kcal": 282.0
             },
-            r'\b(?:black\s+pepper|ground\s+black\s+pepper|pepper)\b': {
+            r'\b(?:black\s+pepper|ground\s+pepper|black\s+peppercorns?|cracked\s+pepper)\b': {
                 "id": "ciqual_11065", "name": "Black pepper, ground",
                 "protein_g": 10.4, "carbs_g": 64.0, "fat_g": 3.3, "energy_kcal": 251.0
             },
@@ -381,6 +385,10 @@ class NutritionAnalyzer:
                 "id": "ciqual_4005", "name": "Sweet potato, raw",
                 "protein_g": 1.6, "carbs_g": 20.0, "fat_g": 0.1, "energy_kcal": 86.0
             },
+            r'\b(?:bell\s+peppers?|red\s+bell\s+peppers?|green\s+bell\s+peppers?|yellow\s+bell\s+peppers?|peppers?)\b': {
+                "id": "ciqual_20042", "name": "Bell pepper, red, raw",
+                "protein_g": 1.0, "carbs_g": 6.0, "fat_g": 0.3, "energy_kcal": 31.0
+            },
             r'\b(?:broccoli|broccoli\s+florets)\b': {
                 "id": "ciqual_20003", "name": "Broccoli, raw",
                 "protein_g": 2.8, "carbs_g": 4.0, "fat_g": 0.4, "energy_kcal": 34.0
@@ -392,6 +400,31 @@ class NutritionAnalyzer:
             r'\b(?:bananas?|ripe\s+bananas?)\b': {
                 "id": "ciqual_13005", "name": "Banana, raw",
                 "protein_g": 1.1, "carbs_g": 22.0, "fat_g": 0.3, "energy_kcal": 89.0
+            },
+            # Bread, Tortillas & Grains
+            r'\b(?:sandwich\s+bread|sliced\s+bread|toast\s+bread|white\s+bread|whole\s+wheat\s+bread)\b': {
+                "id": "ciqual_9410", "name": "Bread, white / toast bread",
+                "protein_g": 8.0, "carbs_g": 49.0, "fat_g": 1.5, "energy_kcal": 245.0
+            },
+            r'\b(?:american\s+cheese|american\s+cheese\s+slice|cheddar\s+slice)\b': {
+                "id": "canon_american_cheese", "name": "American cheese slice",
+                "protein_g": 18.0, "carbs_g": 5.0, "fat_g": 25.0, "energy_kcal": 317.0
+            },
+            r'\b(?:deli\s+chicken|deli\s+turkey|deli\s+meat|sliced\s+turkey|sliced\s+chicken)\b': {
+                "id": "canon_deli_meat", "name": "Deli poultry / sliced meat",
+                "protein_g": 20.0, "carbs_g": 2.0, "fat_g": 2.0, "energy_kcal": 106.0
+            },
+            r'\b(?:udon\s+noodles?|ramen\s+noodles?|asian\s+noodles?)\b': {
+                "id": "ciqual_9800", "name": "Noodles, cooked",
+                "protein_g": 4.5, "carbs_g": 29.0, "fat_g": 0.8, "energy_kcal": 142.0
+            },
+            r'\b(?:pak\s+choi|bok\s+choy|chinese\s+cabbage)\b': {
+                "id": "ciqual_20050", "name": "Pak choi / Bok choy",
+                "protein_g": 1.5, "carbs_g": 2.2, "fat_g": 0.2, "energy_kcal": 13.0
+            },
+            r'\b(?:miso|miso\s+paste|gochujang)\b': {
+                "id": "canon_miso", "name": "Miso / Fermented soybean paste",
+                "protein_g": 12.0, "carbs_g": 26.0, "fat_g": 6.0, "energy_kcal": 198.0
             },
             r'\b(?:brioche\s+buns?|burger\s+buns?|hamburger\s+buns?|hot\s+dog\s+buns?|buns?)\b': {
                 "id": "ciqual_24000", "name": "Burger bun / Brioche",
@@ -899,6 +932,28 @@ class NutritionAnalyzer:
                 if "tsp" in low:
                     return val * 5.0
 
+            # Handle slices
+            slice_match = re.search(r'(\d+(?:\.\d+)?)\s*slices?\b', raw_qty_str, re.IGNORECASE)
+            if slice_match:
+                s_cnt = float(slice_match.group(1))
+                c_name = name_str.lower()
+                if "cheese" in c_name:
+                    return s_cnt * 20.0
+                elif "bread" in c_name or "toast" in c_name:
+                    return s_cnt * 28.0
+                elif "meat" in c_name or "chicken" in c_name or "turkey" in c_name or "ham" in c_name:
+                    return s_cnt * 25.0
+                return s_cnt * 25.0
+
+            # Handle pinches, dashes, sprinkles
+            if any(kw in raw_qty_str.lower() for kw in ["pinch", "dash", "sprinkle", "to taste"]):
+                return 1.0
+
+            # Handle cloves
+            clove_match = re.search(r'(\d+(?:\.\d+)?)\s*cloves?\b', raw_qty_str, re.IGNORECASE)
+            if clove_match:
+                return float(clove_match.group(1)) * 3.0
+
             # Handle decimal cups
             cup_match = re.search(r'(\d+(?:\.\d+)?)\s*cups?\b', raw_qty_str, re.IGNORECASE)
             if cup_match:
@@ -918,12 +973,32 @@ class NutritionAnalyzer:
             if count_match:
                 cnt = float(count_match.group(1))
                 c_name = name_str.lower()
-                if "egg" in c_name:
+
+                # Large count >= 10 is raw gram weight unless it's eggs or tortillas
+                if cnt >= 10:
+                    if "egg white" in c_name:
+                        return cnt
+                    elif "egg" in c_name:
+                        return cnt * 50.0
+                    elif any(kw in c_name for kw in ["tortilla", "wrap", "bun", "cookie", "muffin"]):
+                        return cnt * 50.0
+                    return cnt
+
+                # Small count (< 10)
+                if "egg white" in c_name:
+                    return cnt * 33.0
+                elif "egg" in c_name:
                     return cnt * 50.0
                 elif any(kw in c_name for kw in ["salt", "pepper", "powder", "paprika", "spice", "herb", "seasoning", "cinnamon"]):
                     return cnt * 1.0
+                elif any(kw in c_name for kw in ["oil", "butter", "sauce", "mustard", "honey", "sriracha", "vinegar"]):
+                    return cnt if cnt >= 3 else cnt * 10.0
+                elif any(kw in c_name for kw in ["olive", "cherry", "grape", "clove"]):
+                    return cnt * 5.0
                 elif any(kw in c_name for kw in ["bun", "tortilla", "wrap", "slice", "cookie", "muffin"]):
                     return cnt * 50.0
+                elif any(kw in c_name for kw in ["onion", "apple", "banana", "potato", "avocado", "bell pepper"]):
+                    return cnt * 150.0
                 return cnt * 100.0
 
         qty = 1.0

@@ -97,21 +97,54 @@ def calculate_recipe_macros_from_ingredients(ingredients):
             "_raw_cal": ing_calories
         }
 
+    deduped_ingredients = []
+    seen_hashes = {}
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         for res in executor.map(process_ingredient, ingredients):
-            if res:
-                total_protein += res.pop("_raw_p")
-                total_carbs += res.pop("_raw_c")
-                total_fats += res.pop("_raw_f")
-                total_calories += res.pop("_raw_cal")
-                ingredients_breakdown.append(res)
+            if not res:
+                continue
+
+            raw_p = res.pop("_raw_p", 0)
+            raw_c = res.pop("_raw_c", 0)
+            raw_f = res.pop("_raw_f", 0)
+            raw_cal = res.pop("_raw_cal", 0)
+
+            key = res.get("hash") or res.get("name", "").lower()
+            qty = str(res.get("quantity", "1")).strip()
+
+            if key in seen_hashes:
+                existing_idx = seen_hashes[key]
+                existing = deduped_ingredients[existing_idx]
+                if qty != "1" and existing.get("quantity") == "1":
+                    total_protein -= existing.get("protein", 0)
+                    total_carbs -= existing.get("carbs", 0)
+                    total_fats -= existing.get("fats", 0)
+                    total_calories -= existing.get("calories", 0)
+
+                    total_protein += raw_p
+                    total_carbs += raw_c
+                    total_fats += raw_f
+                    total_calories += raw_cal
+                    deduped_ingredients[existing_idx] = res
+                elif qty == "1" and existing.get("quantity") != "1":
+                    continue
+                else:
+                    continue
+            else:
+                seen_hashes[key] = len(deduped_ingredients)
+                total_protein += raw_p
+                total_carbs += raw_c
+                total_fats += raw_f
+                total_calories += raw_cal
+                deduped_ingredients.append(res)
             
     return {
         "protein": int(round(total_protein)),
         "carbs": int(round(total_carbs)),
         "fats": int(round(total_fats)),
         "calories": int(round(total_calories)),
-        "ingredients": ingredients_breakdown
+        "ingredients": deduped_ingredients
     }
 
 def save_barcode_to_db(barcode, name, protein, carbs, fats, calories):

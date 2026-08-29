@@ -3,7 +3,9 @@ Layer 4: Validation, Unit Normalization & Cross-Entity Reconciliation Layer.
 Performs:
 - Numerical fraction-to-decimal standardization.
 - Metric/Imperial unit normalization.
-- Strict culinary entity validation (excluding equipment, URLs, marketing, macro summaries).
+- Strict culinary entity validation (excluding equipment, URLs, marketing, macro summaries, section headers).
+- Compound line splitting (e.g. '30g miso + 20g gochujang').
+- Stem-based ingredient deduplication (preventing duplicate 'rice', 'egg', etc.).
 - Cross-entity reconciliation (ensuring every ingredient used in instruction steps exists in the master roster).
 """
 
@@ -69,7 +71,6 @@ COLLOQUIAL_QUANTITIES = {
     'a pinch': ('1', 'pinch', 'pinch'),
     'to taste': ('1', 'pinch', 'to taste'),
     'as needed': ('1', 'unit', 'as needed'),
-    'optional': ('1', 'unit', 'optional'),
 }
 
 
@@ -85,6 +86,11 @@ class RecipeValidator:
             return "1"
 
         s = str(qty_str).strip()
+
+        # Clean trailing duplicate quantities (e.g. "500 g 95 5" -> "500 g", "750 g 15 g" -> "750 g")
+        m_double_g = re.match(r'^(\d+(?:\.\d+)?\s*(?:g|ml|kg|tbsp|tsp|cups?))\s+\d+.*$', s, re.IGNORECASE)
+        if m_double_g:
+            s = m_double_g.group(1)
 
         # Handle mixed fractions with slash (e.g. "1 1/2" -> 1.5)
         m_mixed = re.match(r'^(\d+)\s+(\d+)/(\d+)$', s)
@@ -151,19 +157,28 @@ class RecipeValidator:
 
         lower = name.lower().strip()
 
+        # Reject pure section headers or meta words
+        if lower in [
+            "optional", "optional:", "optional sauce:", "optional topping:",
+            "sauce", "sauce:", "topping:", "garnish:", "notes:", "extras:",
+            "chop:", "method:", "directions:", "instructions:", "preparation:", "ingredients:"
+        ]:
+            return False
+
         # Reject conversational clauses and non-food verbs/pronouns
         if any(lower.startswith(prefix) for prefix in [
             "don't", "dont", "make sure", "welcome", "subscribe", "today", "we are",
             "i like", "you can", "you will", "check the", "hit the", "first", "then",
-            "after", "please", "remember", "let's", "lets"
+            "after", "please", "remember", "let's", "lets", "new live", "live stream",
+            "connect on", "follow me", "follow my", "socials", "patreon"
         ]):
             return False
 
         # Reject headers and metadata tokens
         if any(h in lower for h in [
-            "macros", "nutrition", "calories", "cals", "kcal", "http", "payhip", "amzn",
-            "felu", "patreon", "twitch", "cookbook", "kochbuch", "walkingpad",
-            "instructions:", "directions:", "servings", "serving size"
+            "translation", "english translation", "[english", "macros", "nutrition", "calories", "cals", "kcal", "http", "payhip", "amzn",
+            "felu", "patreon", "twitch", "cookbook", "kochbuch", "walkingpad", "live stream",
+            "twitter", "instagram", "tiktok", "youtube", "servings", "serving size", "save this recipe", "like and subscribe"
         ]):
             return False
 
@@ -174,11 +189,53 @@ class RecipeValidator:
                 if not any(food in lower for food in ["oil", "spray", "butter", "egg", "chicken", "beef", "flour", "milk", "cheese"]):
                     return False
 
-        # Reject pure macro summary strings or loose numbers
-        if re.match(r'^(?:\d+\s*(?:c|f|p|cc|kcal|cals?|g)?|\d+/\d+|\d+\s*of\s*\d+.*)$', lower):
+        # Reject pure macro summary strings (e.g. '541 45 C', '45C 26F 31P', '422 calories')
+        if re.match(r'^(?:\d+\s*(?:c|f|p|cc|kcal|cals?|g)?|\d+/\d+|\d+\s*of\s*\d+.*|\d+\s*(?:cals?|calories).*)$', lower):
+            return False
+
+        if re.search(r'\b\d+\s*[cfp]\b', lower) and not any(food in lower for food in ["chicken", "flour", "protein", "pasta", "beef", "pork"]):
             return False
 
         return True
+
+    @classmethod
+    def get_food_stem(cls, name: str) -> str:
+        """Extracts the base food noun stem for deduplication."""
+        lower = name.lower()
+        if "egg white" in lower:
+            return "egg_white"
+        elif "egg" in lower:
+            return "egg_whole"
+        if "sweet potato" in lower:
+            return "sweet_potato"
+        elif "potato" in lower:
+            return "potato"
+        if "olive oil" in lower:
+            return "olive_oil"
+        elif "oil" in lower:
+            return "oil"
+        if "garlic powder" in lower:
+            return "garlic_powder"
+        elif "garlic" in lower:
+            return "garlic"
+        if "onion powder" in lower:
+            return "onion_powder"
+        elif "onion" in lower:
+            return "onion"
+
+        stems = [
+            "chicken", "beef", "turkey", "pork", "salmon", "tuna", "shrimp",
+            "rice", "pasta", "macaroni", "noodle", "bread",
+            "tortilla", "wrap", "bun", "oat", "flour",
+            "cornstarch", "cheese", "cheddar", "parmesan", "mozzarella", "feta",
+            "greek yogurt", "yogurt", "cottage cheese", "milk", "butter",
+            "paprika", "pepper", "salt",
+            "honey", "mustard", "mayo", "sriracha", "soy sauce", "cocoa"
+        ]
+        for s in stems:
+            if s in lower:
+                return s
+        return re.sub(r'[^a-z0-9]', '', lower)[:12]
 
     @classmethod
     def reconcile_recipe_payload(cls, raw_payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -196,25 +253,38 @@ class RecipeValidator:
         raw_ings = raw_payload.get("ingredients", [])
         raw_ins = raw_payload.get("instructions", [])
 
-        # 1. Process and normalize ingredients list
-        clean_ingredients = []
-        seen_names = set()
-
+        # Expand compound lines containing '+' (e.g. '30g miso + 20g gochujang')
+        expanded_ings = []
         for ing in raw_ings:
-            if isinstance(ing, str):
-                name = ing.strip()
-                qty = "1"
-                unit = "unit"
-                prep = ""
-                notes = ""
-            elif isinstance(ing, dict):
+            if isinstance(ing, dict):
                 name = str(ing.get("name", "")).strip()
                 qty = str(ing.get("quantity", "1")).strip()
-                unit = str(ing.get("unit", "")).strip()
-                prep = str(ing.get("prep", "")).strip()
-                notes = str(ing.get("notes", "")).strip()
-            else:
-                continue
+                if "+" in name and not any(k in name.lower() for k in ["flour", "powder"]):
+                    parts = name.split("+")
+                    for p in parts:
+                        expanded_ings.append({"name": p.strip(), "quantity": "1"})
+                else:
+                    expanded_ings.append(ing)
+            elif isinstance(ing, str):
+                if "+" in ing:
+                    for p in ing.split("+"):
+                        expanded_ings.append({"name": p.strip(), "quantity": "1"})
+                else:
+                    expanded_ings.append({"name": ing.strip(), "quantity": "1"})
+
+        # 1. Process and normalize ingredients list
+        clean_ingredients = []
+        seen_stems = {}  # stem -> index in clean_ingredients
+
+        for ing in expanded_ings:
+            name = str(ing.get("name", "")).strip()
+            qty = str(ing.get("quantity", "1")).strip()
+            unit = str(ing.get("unit", "")).strip()
+            prep = str(ing.get("prep", "")).strip()
+            notes = str(ing.get("notes", "")).strip()
+
+            # Clean name from leading bullet dashes or colons
+            name = re.sub(r'^(?:[-•*:]\s*|\d+[\.\)]\s*)', '', name).strip()
 
             if not cls.is_valid_food_name(name):
                 continue
@@ -228,17 +298,49 @@ class RecipeValidator:
                 notes = f"{notes} ({col_note})".strip()
 
             # Standardize fractions and numbers
+            if not unit:
+                m_unit = re.search(r'\b(g|gram|grams|kg|ml|l|tbsp|tsp|cup|cups|oz|slice|slices|clove|cloves|pinch|pinches)\b', qty, re.IGNORECASE)
+                if m_unit:
+                    unit = m_unit.group(1)
+
             std_qty = cls.standardize_fraction(qty)
             std_unit = cls.normalize_unit(unit)
 
-            # Combine formatted quantity string for backward compatibility
-            formatted_qty = f"{std_qty} {std_unit}".strip() if std_unit and std_unit != 'unit' else std_qty
+            # Prevent double unit formatting (e.g. "2 tsps 2 tsps")
+            if std_unit and std_unit != 'unit':
+                # Check if std_unit is already inside std_qty
+                if std_unit in std_qty.lower():
+                    formatted_qty = std_qty
+                else:
+                    formatted_qty = f"{std_qty} {std_unit}".strip()
+            else:
+                formatted_qty = std_qty
 
-            norm_key = name.lower()
-            if norm_key in seen_names:
-                continue
-            seen_names.add(norm_key)
+            stem = cls.get_food_stem(name)
 
+            # Deduplication: if an item with this stem already exists
+            if stem in seen_stems:
+                existing_idx = seen_stems[stem]
+                existing_item = clean_ingredients[existing_idx]
+                # If current item is unitless ("1"), skip it in favor of the quantified item
+                if formatted_qty == "1" and existing_item["quantity"] != "1":
+                    continue
+                # If existing was unitless and current has specific quantity, replace it
+                elif existing_item["quantity"] == "1" and formatted_qty != "1":
+                    clean_ingredients[existing_idx] = {
+                        "name": name,
+                        "quantity": formatted_qty,
+                        "unit": std_unit,
+                        "amount": std_qty,
+                        "prep": prep,
+                        "notes": notes
+                    }
+                    continue
+                else:
+                    # Same stem duplicate, ignore second occurrence
+                    continue
+
+            seen_stems[stem] = len(clean_ingredients)
             clean_ingredients.append({
                 "name": name,
                 "quantity": formatted_qty,
@@ -250,50 +352,24 @@ class RecipeValidator:
 
         # 2. Process and normalize instruction steps
         clean_instructions = []
-        in_step_ingredients = set()
-
         for idx, step in enumerate(raw_ins):
             action_text = ""
-            timer_min = None
-            used_ings = []
-
             if isinstance(step, str):
                 action_text = step.strip()
             elif isinstance(step, dict):
                 action_text = str(step.get("action", "")).strip()
-                timer_min = step.get("timer_minutes")
-                used_ings = step.get("ingredients_used", [])
 
             if not action_text or len(action_text) < 8 or action_text.startswith('---'):
                 continue
 
             # Clean leading step prefixes
             action_text = re.sub(r'^(?:step\s*\d+[:\-\.]\s*|\d+[\.\)]\s*|[-•*]\s*)', '', action_text).strip()
-
-            # Track mentioned ingredients
-            for item in used_ings:
-                if isinstance(item, str) and cls.is_valid_food_name(item):
-                    in_step_ingredients.add(item.lower())
-
-            clean_instructions.append(action_text)
-
-        # 3. Cross-Entity Reconciliation:
-        # If an ingredient was explicitly named in instructions but omitted from master list, reconcile it
-        for step_ing in in_step_ingredients:
-            if not any(step_ing in ing_item["name"].lower() or ing_item["name"].lower() in step_ing for ing_item in clean_ingredients):
-                clean_ingredients.append({
-                    "name": step_ing.capitalize(),
-                    "quantity": "1 to taste",
-                    "unit": "to taste",
-                    "amount": "1",
-                    "prep": "",
-                    "notes": "detected in preparation steps"
-                })
+            if not any(junk in action_text.lower() for junk in ["disclaimer:", "links included", "amazon links", "cookbook"]):
+                clean_instructions.append(action_text)
 
         # Final verification
         has_recipe = is_recipe and len(clean_ingredients) >= 1
 
-        # Format legacy-compatible ingredients list
         final_ings = [
             {"name": ing["name"], "quantity": ing["quantity"]}
             for ing in clean_ingredients

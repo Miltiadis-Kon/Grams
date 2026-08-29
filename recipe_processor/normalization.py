@@ -1,7 +1,7 @@
 """
 Layer 1: Ingestion & Text Normalization Layer.
 Handles conversational de-noising, disfluency cleaning, sponsor stripping,
-speaker turn aggregation, and context window budgeting.
+speaker turn aggregation, multi-meal semantic chunking, and context window budgeting.
 """
 
 import re
@@ -18,41 +18,50 @@ DISFLUENCY_PATTERNS = [
     r'\((?:music|applause|laughter|audio)\)',
 ]
 
-# Marketing, social media, sponsor and equipment boilerplate patterns
+# Marketing, social media, sponsor, streaming, and equipment boilerplate patterns
 SPONSOR_AND_NOISE_PATTERNS = [
     r'https?://\S+',
     r'📖\s*DIET\s+COOKBOOK.*',
     r'📖\s*KOCHBUCH.*',
     r'🔪\s*NAKIRI.*',
-    r'Follow my Live Streams:.*',
-    r'Twitch:.*',
-    r'Kick:.*',
-    r'My Patreon.*',
-    r'Socials:.*',
-    r'Twitter/X:.*',
-    r'IG:.*',
-    r'TikTok:.*',
-    r'Everything I cook with.*',
-    r'AMAZON LINKS:.*',
-    r'MIDEA FLEXIFY.*',
-    r'DISCLAIMER:.*',
-    r'\[LLM Parsed Instructions\].*',
+    r'🫒\s*PREMIUM.*',
+    r'NEW\s+LIVE\s+STREAMS:?.*',
+    r'Follow\s+my\s+Live\s+Streams:?.*',
+    r'Live\s+Streams:?.*',
+    r'Connect\s+on\s+Twitter/X:?.*',
+    r'Connect\s+on\s+IG:?.*',
+    r'Connect\s+on\s+TikTok:?.*',
+    r'Follow\s+me\s+on\s+[A-Za-z/]+:?.*',
+    r'Twitch:?.*',
+    r'Kick:?.*',
+    r'My\s+Patreon.*',
+    r'Socials:?.*',
+    r'Twitter/X:?.*',
+    r'IG:?.*',
+    r'TikTok:?.*',
+    r'Everything\s+I\s+cook\s+with.*',
+    r'AMAZON\s+LINKS:?.*',
+    r'MIDEA\s+FLEXIFY.*',
+    r'DISCLAIMER:?.*',
+    r'\[LLM\s+Parsed\s+Instructions\].*',
     r'[-=_*~]{3,}',
-    r'Non stick pan:.*',
-    r'Kitchen scale:.*',
-    r'Meal prep container:.*',
-    r'Air fryer:.*',
-    r'Big Blender:.*',
-    r'Small Blender:.*',
-    r'Y-Peeler:.*',
-    r'Squeeze bottles:.*',
-    r'STOVETOP:.*',
-    r'Walkingpad:.*',
+    r'Non\s+stick\s+pan:?.*',
+    r'Kitchen\s+scale:?.*',
+    r'Meal\s+prep\s+container:?.*',
+    r'Air\s+fryer:?.*',
+    r'Big\s+Blender:?.*',
+    r'Small\s+Blender:?.*',
+    r'Y-Peeler:?.*',
+    r'Squeeze\s+bottles:?.*',
+    r'STOVETOP:?.*',
+    r'Walkingpad:?.*',
+    r'Life[\s\-]?changing\s+Cookbook.*',
+    r'\bAd\s*\([^\)]*\)',
 ]
 
 # Sponsor verbal triggers in spoken transcripts
 VERBAL_SPONSOR_TRIGGERS = [
-    r'(?:thank\s+you\s+to\s+today\'?s?\s+sponsor|sponsored\s+by|use\s+my\s+code\s+[A-Z0-9]+|check\s+the\s+link\s+in\s+(?:the\s+)?description|link\s+is\s+in\s+my\s+bio|don\'?t\s+forget\s+to\s+like\s+and\s+subscribe|hit\s+the\s+bell\s+icon|use\s+code\s+[a-zA-Z0-9_\-]+\s+for\s+\d+%\s+off).*?(?=(?:\.|\n|$))',
+    r'(?:thank\s+you\s+to\s+today\'?s?\s+sponsor|sponsored\s+by|use\s+my\s+code\s+[A-Z0-9]+|check\s+the\s+link\s+in\s+(?:the\s+)?description|link\s+is\s+in\s+my\s+bio|don\'?t\s+forget\s+to\s+(?:like|subscribe|check)|hit\s+the\s+bell\s+icon|use\s+code\s+[a-zA-Z0-9_\-]+\s+for\s+\d+%\s+off).*?(?=(?:\.|\n|$))',
 ]
 
 
@@ -70,8 +79,9 @@ class IngestionNormalizer:
         if not text:
             return ""
 
-        # Step 1: Remove full timestamp ranges (e.g. [00:12.400 --> 00:15.200] or 00:12 --> 00:15)
+        # Step 1: Remove full timestamp ranges (e.g. [00:12.400 --> 00:15.200] or 00:12 --> 00:15 or 00:00 Intro)
         cleaned = re.sub(r'\[?\b\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\b\s*(?:-->|–|-)\s*\b\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\b\]?', ' ', text)
+        cleaned = re.sub(r'^\s*\d{1,2}:\d{2}(?::\d{2})?\s+.*$', '', cleaned, flags=re.MULTILINE)
         cleaned = re.sub(r'\[?\b\d{1,2}:\d{2}(?::\d{2})?(?:[.,]\d+)?\b\]?', ' ', cleaned)
 
         # Step 2: Remove speaker diarization markers (e.g. "Speaker 1:", "[Speaker 1]:", "Host:", "Chef:")
@@ -108,6 +118,45 @@ class IngestionNormalizer:
         result = "\n".join(clean_lines).strip()
         result = re.sub(r'[ \t]{2,}', ' ', result)
         return result
+
+    @classmethod
+    def split_multi_meal_sections(cls, text: str) -> List[Tuple[str, str]]:
+        """
+        Detects if text contains multiple standalone meals/recipes
+        (e.g., 'Macros egg sandwich:', 'Macros Noodle Bowl:', 'Meal 1:', 'Recipe 1:').
+        Returns list of (title, section_text) tuples. If single recipe, returns [("", text)].
+        """
+        if not text:
+            return []
+
+        # Check for 'Macros <Meal Name>:' sections
+        macro_split = re.split(r'(?=(?:^|\n)\s*Macros\s+(?:for\s+)?([A-Za-z0-9\s/&\-]+)[:\-])', text, flags=re.IGNORECASE)
+        if len(macro_split) > 2:
+            results = []
+            for i in range(1, len(macro_split), 2):
+                meal_title = macro_split[i].strip()
+                meal_body = macro_split[i+1].strip() if i+1 < len(macro_split) else ""
+                # Skip if body is too small or just numbers
+                if len(meal_body.splitlines()) >= 2:
+                    clean_title = re.sub(r'^(?:for\s+)?', '', meal_title, flags=re.IGNORECASE).strip()
+                    results.append((clean_title, meal_body))
+            if results:
+                return results
+
+        # Check for 'Meal 1:', 'Meal 2:', 'Recipe 1:' sections
+        meal_num_split = re.split(r'(?=(?:^|\n)\s*(?:Meal|Recipe|Dish)\s*(\d+)[:\-\s]+([^\n]+)?)', text, flags=re.IGNORECASE)
+        if len(meal_num_split) > 3:
+            results = []
+            for i in range(1, len(meal_num_split), 3):
+                m_num = meal_num_split[i]
+                m_title = meal_num_split[i+1] if i+1 < len(meal_num_split) and meal_num_split[i+1] else f"Meal {m_num}"
+                m_body = meal_num_split[i+2] if i+2 < len(meal_num_split) else ""
+                if len(m_body.splitlines()) >= 2:
+                    results.append((m_title.strip(), m_body.strip()))
+            if results:
+                return results
+
+        return [("", text)]
 
     @staticmethod
     def chunk_if_needed(text: str, max_words: int = 2500) -> List[str]:

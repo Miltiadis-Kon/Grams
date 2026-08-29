@@ -135,6 +135,17 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
     for line in lines:
         lower = line.lower()
 
+        # Skip translation and transcript metadata headers
+        if line.startswith('[') and line.endswith(']'):
+            continue
+
+        # Skip call-to-action / engagement prompts
+        if any(cta in lower for cta in [
+            "save this recipe", "like and subscribe", "leave a heart", "follow for more",
+            "αν σου άρεσε", "κάνε 1", "αποθήκευσε", "subscribe", "follow me", "link in bio"
+        ]):
+            continue
+
         # Section triggers
         if re.match(r'^(?:instructions?|directions?|steps?|method|εκτέλεση|εκτελεση)[:\-\s]*$', lower):
             in_instructions = True
@@ -207,10 +218,20 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
             if len(s) > 25 and any(kw in s.lower() for kw in ['bake', 'cook', 'mix', 'heat', 'pan', 'oven', 'air fryer', 'stir', 'add', 'serve', 'bowl', 'blend', 'fridge']):
                 instructions.append(s)
 
+    valid_ingredients = [
+        i for i in ingredients
+        if RecipeValidator.is_valid_food_name(i.get("name", ""))
+    ]
+
+    has_valid_recipe = (
+        len(valid_ingredients) >= 2 or
+        (len(valid_ingredients) == 1 and valid_ingredients[0].get("quantity") != "1")
+    )
+
     return {
-        "is_recipe": len(ingredients) >= 1,
+        "is_recipe": has_valid_recipe,
         "title": title or "Extracted Recipe",
-        "ingredients": ingredients,
+        "ingredients": valid_ingredients,
         "instructions": instructions
     }
 

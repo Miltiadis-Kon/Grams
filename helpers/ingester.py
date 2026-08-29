@@ -1,12 +1,9 @@
 """
-TikTok playlist ingestion module using Playwright (headless) + session cookies.
+TikTok playlist ingestion module using yt-dlp + Playwright fallback.
 
-Extracts video metadata (IDs, titles, descriptions, URLs) from TikTok
-playlist pages by rendering them in a headless Chromium browser with
-authenticated session cookies for reliable access.
-
-For local development: uses personal session cookies from a JSON file.
-For production scale: designed to be swapped out for a cloud client (e.g. Apify).
+Extracts recipe video metadata (IDs, titles, descriptions, URLs) from TikTok
+playlist pages and video URLs, routes them through the 4-layer Recipe Extraction
+Pipeline, calculates accurate nutritional macros, and stores them in PostgreSQL.
 """
 
 from __future__ import annotations
@@ -15,6 +12,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import time
 from typing import Any, Optional
 
@@ -31,16 +29,7 @@ logger = logging.getLogger(__name__)
 
 class TikTokIngester:
     """
-    Extracts recipe video metadata from TikTok playlists using Playwright.
-
-    Usage:
-        ingester = TikTokIngester(sync_pipeline)
-        stats = ingester.ingest_playlist("https://vm.tiktok.com/...")
-
-    Cookie Setup:
-        Export your TikTok session cookies to 'tiktok_cookies.json' in the
-        project root. Each cookie should be a dict with at minimum:
-        {"name": "...", "value": "...", "domain": ".tiktok.com", "path": "/"}
+    Extracts recipe video metadata from TikTok playlists and individual videos.
     """
 
     def __init__(self, sync_pipeline: Any) -> None:
@@ -50,37 +39,9 @@ class TikTokIngester:
     def ingest_playlist(self, playlist_url: str) -> dict[str, int]:
         """
         Scrape a TikTok playlist page and ingest all discovered videos.
-
         Returns batch stats: {"added": N, "skipped": M, "errors": K}
         """
-        try:
-            from playwright.sync_api import sync_playwright
-        except ImportError:
-            raise RuntimeError(
-                "Playwright is not installed. Install it with:\n"
-                "  pip install playwright\n"
-                "  playwright install chromium\n"
-                "Then export your TikTok session cookies to "
-                f"'{self._cookies_path}'"
-            )
-
-        videos = self._extract_playlist_metadata(playlist_url)
-
-        if not videos:
-            logger.warning("No videos extracted from playlist: %s", playlist_url)
-            return {"added": 0, "skipped": 0, "errors": 0}
-
-        # Convert to the batch format expected by SyncPipeline
-        items = []
-        for video in videos:
-            items.append({
-                "id": video["id"],
-                "name": video.get("title", "Untitled TikTok Recipe"),
-                "url": video.get("url", playlist_url),
-                "description": video.get("description", ""),
-            })
-
-        return self._pipeline.process_batch(items)
+        return self.ingest_playlist_detailed(playlist_url)
 
     def ingest_playlist_detailed(
         self, playlist_url: str, delay_seconds: float = TIKTOK_INGEST_DELAY_SEC, force: bool = False
@@ -99,7 +60,7 @@ class TikTokIngester:
             return stats
 
         logger.info(
-            "Found %d video links in playlist. Starting detailed slow ingestion...",
+            "Found %d video links in playlist. Starting detailed ingestion...",
             len(video_links),
         )
 
@@ -149,7 +110,8 @@ class TikTokIngester:
                         video_id,
                         delay_seconds,
                     )
-                    time.sleep(delay_seconds)
+                    if delay_seconds > 0:
+                        time.sleep(delay_seconds)
                 elif added is None:
                     logger.warning("Recipe %s had no data; routed to manual check list", video_id)
                     stats["not_added"] += 1
@@ -164,12 +126,38 @@ class TikTokIngester:
 
     def _extract_playlist_links(self, playlist_url: str) -> list[dict[str, str]]:
         """
-        Loads the playlist page using Playwright, scrolls to load all videos,
-        and extracts only their IDs and URLs.
+        Extract video links from a TikTok playlist using yt-dlp first (fast, no browser overhead),
+        with fallback to Playwright headless browser.
         """
-        from playwright.sync_api import sync_playwright
-
         videos = []
+
+        # 1. Primary: Fast yt-dlp flat playlist extraction
+        try:
+            logger.info("Extracting TikTok playlist video links via yt-dlp: %s", playlist_url)
+            cmd = ["yt-dlp", "--flat-playlist", "--print", "id", "--print", "webpage_url", playlist_url]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+            if res.returncode == 0 and res.stdout.strip():
+                lines = [l.strip() for l in res.stdout.strip().splitlines() if l.strip()]
+                seen_ids = set()
+                for i in range(0, len(lines) - 1, 2):
+                    vid_id = lines[i]
+                    vid_url = lines[i+1]
+                    if vid_id and vid_id not in seen_ids:
+                        seen_ids.add(vid_id)
+                        db_id = f"tt_{vid_id}" if not vid_id.startswith("tt_") else vid_id
+                        videos.append({"id": db_id, "url": vid_url})
+                if videos:
+                    logger.info("Successfully discovered %d video links from TikTok playlist via yt-dlp.", len(videos))
+                    return videos
+        except Exception as exc:
+            logger.warning("yt-dlp playlist extraction failed: %s. Falling back to Playwright.", exc)
+
+        # 2. Fallback: Playwright Headless Browser
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            return videos
+
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=PLAYWRIGHT_HEADLESS)
             context = browser.new_context(
@@ -187,11 +175,12 @@ class TikTokIngester:
 
             page = context.new_page()
             try:
-                logger.info("Scanning playlist for video links: %s", playlist_url)
+                logger.info("Scanning playlist via Playwright: %s", playlist_url)
                 page.goto(playlist_url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(3000)
+                page.wait_for_timeout(4000)
 
                 previous_count = 0
+                no_change_count = 0
                 for scroll_attempt in range(TIKTOK_MAX_SCROLL_ATTEMPTS):
                     page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     time.sleep(TIKTOK_SCROLL_PAUSE_SEC)
@@ -201,29 +190,29 @@ class TikTokIngester:
 
                     if current_count > previous_count:
                         previous_count = current_count
-                        logger.debug(
-                            "Scroll %d: found %d video links",
-                            scroll_attempt + 1,
-                            current_count,
-                        )
+                        no_change_count = 0
+                        logger.debug("Scroll %d: found %d video links", scroll_attempt + 1, current_count)
                     else:
-                        logger.info("Scan complete: %d video links found", current_count)
-                        break
+                        no_change_count += 1
+                        if no_change_count >= 3 and current_count > 0:
+                            logger.info("Scan complete: %d video links found", current_count)
+                            break
 
                 seen_ids = set()
                 for link in page.query_selector_all('a[href*="/video/"]'):
                     href = link.get_attribute("href") or ""
-                    video_id = self._extract_video_id(href)
+                    raw_id = self._extract_video_id(href)
 
-                    if not video_id or video_id in seen_ids:
+                    if not raw_id or raw_id in seen_ids:
                         continue
-                    seen_ids.add(video_id)
+                    seen_ids.add(raw_id)
+                    db_id = f"tt_{raw_id}" if not raw_id.startswith("tt_") else raw_id
 
                     full_url = href if href.startswith("http") else f"https://www.tiktok.com{href}"
-                    videos.append({"id": video_id, "url": full_url})
+                    videos.append({"id": db_id, "url": full_url})
 
             except Exception as exc:
-                logger.error("Failed scanning playlist video links: %s", exc)
+                logger.error("Failed scanning playlist video links via Playwright: %s", exc)
             finally:
                 browser.close()
 
@@ -231,9 +220,8 @@ class TikTokIngester:
 
     def ingest_single(self, video_url: str, force: bool = False) -> bool | None:
         """
-        Extract metadata from a single TikTok video and process it.
-
-        Returns True if the recipe was newly added/updated, False if skipped, None if saved to not-added.
+        Extract metadata from a single TikTok video and process it through the pipeline.
+        Returns True if newly added/updated, False if skipped, None if routed to manual review.
         """
         video = self._extract_single_video(video_url)
         if not video:
@@ -242,13 +230,13 @@ class TikTokIngester:
 
         return self._pipeline.process(
             recipe_id=video["id"],
-            name=video.get("title", "Untitled"),
+            name=video.get("title", "Untitled TikTok Recipe"),
             url=video.get("url", video_url),
             description=video.get("description", ""),
             force_reprocess=force,
         )
 
-    # ── Private: Playwright Extraction ───────────────
+    # ── Private: Extraction Backends ───────────────
 
     def _load_cookies(self) -> list[dict]:
         """Load session cookies from environment variable or JSON file."""
@@ -269,8 +257,11 @@ class TikTokIngester:
                 )
                 return []
 
-            with open(self._cookies_path, "r", encoding="utf-8") as fh:
-                cookies = json.load(fh)
+            try:
+                with open(self._cookies_path, "r", encoding="utf-8") as fh:
+                    cookies = json.load(fh)
+            except Exception:
+                return []
 
         # Normalize cookie format for Playwright
         normalized = []
@@ -281,153 +272,62 @@ class TikTokIngester:
                 "domain": c.get("domain", ".tiktok.com"),
                 "path": c.get("path", "/"),
             }
-            # Playwright requires either url or domain+path
             if not cookie["domain"].startswith("."):
                 cookie["domain"] = "." + cookie["domain"]
             normalized.append(cookie)
 
-        logger.info("Loaded %d session cookies from %s", len(normalized), self._cookies_path)
         return normalized
 
-    def _extract_playlist_metadata(self, playlist_url: str) -> list[dict]:
-        """
-        Use Playwright to load a TikTok playlist page and extract video metadata.
-
-        Scrolls to load dynamically-rendered content and parses video links
-        and descriptions from the page DOM.
-        """
-        from playwright.sync_api import sync_playwright
-
-        videos = []
-
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=PLAYWRIGHT_HEADLESS)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 720},
-            )
-
-            # Inject session cookies
-            cookies = self._load_cookies()
-            if cookies:
-                context.add_cookies(cookies)
-
-            page = context.new_page()
-
-            try:
-                logger.info("Navigating to playlist: %s", playlist_url)
-                page.goto(playlist_url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(3000)  # Let JS hydrate
-
-                # Scroll to load all playlist items
-                previous_count = 0
-                for scroll_attempt in range(TIKTOK_MAX_SCROLL_ATTEMPTS):
-                    page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    time.sleep(TIKTOK_SCROLL_PAUSE_SEC)
-
-                    # Count video links currently on page
-                    video_links = page.query_selector_all('a[href*="/video/"]')
-                    current_count = len(video_links)
-
-                    if current_count > previous_count:
-                        previous_count = current_count
-                        logger.debug(
-                            "Scroll %d: found %d videos", scroll_attempt + 1, current_count
-                        )
-                    else:
-                        # No new content loaded — we've reached the bottom
-                        logger.info(
-                            "Scroll complete after %d attempts: %d videos found",
-                            scroll_attempt + 1, current_count,
-                        )
-                        break
-
-                # Extract metadata from each video link
-                video_links = page.query_selector_all('a[href*="/video/"]')
-                seen_ids: set[str] = set()
-
-                for link in video_links:
-                    href = link.get_attribute("href") or ""
-                    video_id = self._extract_video_id(href)
-
-                    if not video_id or video_id in seen_ids:
-                        continue
-                    seen_ids.add(video_id)
-
-                    # Try to extract title/description from nearby elements
-                    description = ""
-                    img = link.query_selector("img")
-                    if img:
-                        description = img.get_attribute("alt") or ""
-
-                    if not description:
-                        parent = link.query_selector("xpath=..")
-                        if parent:
-                            desc_el = parent.query_selector(
-                                '[class*="desc"], [class*="title"], [class*="caption"], [data-e2e="collection-item-desc"]'
-                            )
-                            if desc_el:
-                                description = desc_el.inner_text() or desc_el.get_attribute("aria-label") or ""
-
-                    description = description.strip()
-
-                    # Set a friendly title from the description first line, or fallback
-                    title = ""
-                    if description:
-                        title = description.split("\n")[0].strip()[:80]
-                    if not title:
-                        title = link.get_attribute("title") or link.get_attribute("aria-label") or ""
-                    if not title:
-                        title = f"TikTok Video {video_id}"
-
-                    full_url = href if href.startswith("http") else f"https://www.tiktok.com{href}"
-
-                    videos.append({
-                        "id": video_id,
-                        "title": title.strip(),
-                        "url": full_url,
-                        "description": (description or title).strip(),
-                    })
-
-                logger.info("Extracted %d unique videos from playlist", len(videos))
-
-            except Exception as exc:
-                logger.error("Playwright extraction failed: %s", exc)
-            finally:
-                browser.close()
-
-        return videos
-
     def _extract_single_video(self, video_url: str) -> Optional[dict]:
-        """Extract metadata from a single TikTok video page using pyktok."""
-        import pyktok as pyk
-        import requests
-
-        video_id = self._extract_video_id(video_url)
-        if not video_id:
+        """
+        Extract metadata from a single TikTok video page using yt-dlp first,
+        with fallback to pyktok.
+        """
+        raw_id = self._extract_video_id(video_url)
+        if not raw_id:
             logger.warning("Could not extract video ID from URL: %s", video_url)
             return None
 
-        # Load session cookies and inject them into pyktok's global cookies
-        cookies = self._load_cookies()
-        jar = requests.cookies.RequestsCookieJar()
-        if cookies:
-            for c in cookies:
-                jar.set(
-                    c.get("name", ""),
-                    c.get("value", ""),
-                    domain=c.get("domain", ".tiktok.com"),
-                    path=c.get("path", "/"),
-                )
-        pyk.cookies = jar
+        video_id = f"tt_{raw_id}" if not raw_id.startswith("tt_") else raw_id
 
-        logger.info("Fetching TikTok page via pyktok: %s", video_url)
+        # 1. Primary: yt-dlp video metadata dump
         try:
-            # 1. Try __UNIVERSAL_DATA_FOR_REHYDRATION__ first
+            cmd = ["yt-dlp", "--dump-json", "--no-warnings", video_url]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if res.returncode == 0 and res.stdout.strip():
+                data = json.loads(res.stdout.strip())
+                title = data.get("title", "").strip()
+                description = data.get("description", "").strip()
+                uploader = data.get("uploader", "")
+                
+                # Derive crisp title
+                if not title or title.startswith("video by") or len(title) < 5:
+                    if description:
+                        title = description.split("\n")[0].strip()[:80]
+                if not title:
+                    title = f"TikTok Recipe by @{uploader}" if uploader else f"TikTok Video {raw_id}"
+
+                return {
+                    "id": video_id,
+                    "title": title,
+                    "url": video_url,
+                    "description": description or title,
+                }
+        except Exception as exc:
+            logger.debug("yt-dlp single video extraction error for %s: %s", video_url, exc)
+
+        # 2. Fallback: pyktok
+        try:
+            import pyktok as pyk
+            import requests
+
+            cookies = self._load_cookies()
+            jar = requests.cookies.RequestsCookieJar()
+            if cookies:
+                for c in cookies:
+                    jar.set(c.get("name", ""), c.get("value", ""), domain=c.get("domain", ".tiktok.com"), path=c.get("path", "/"))
+            pyk.cookies = jar
+
             data = pyk.alt_get_tiktok_json(video_url)
             if data and "__DEFAULT_SCOPE__" in data:
                 scope = data.get("__DEFAULT_SCOPE__", {})
@@ -436,41 +336,17 @@ class TikTokIngester:
                 item_struct = item_info.get("itemStruct", {})
                 if item_struct:
                     desc = item_struct.get("desc", "").strip()
-                    title = desc.split("\n")[0].strip()[:80] if desc else ""
-                    if not title:
-                        title = f"TikTok Video {video_id}"
+                    title = desc.split("\n")[0].strip()[:80] if desc else f"TikTok Video {raw_id}"
                     return {
                         "id": video_id,
                         "title": title,
                         "url": video_url,
                         "description": desc,
                     }
-
-            # 2. Try SIGI_STATE as fallback
-            data = pyk.get_tiktok_json(video_url)
-            if data and "ItemModule" in data:
-                item_module = data.get("ItemModule", {})
-                if item_module:
-                    # Key is usually the video ID string
-                    key = list(item_module.keys())[0]
-                    item_struct = item_module[key]
-                    desc = item_struct.get("desc", "").strip()
-                    title = desc.split("\n")[0].strip()[:80] if desc else ""
-                    if not title:
-                        title = f"TikTok Video {video_id}"
-                    return {
-                        "id": video_id,
-                        "title": title,
-                        "url": video_url,
-                        "description": desc,
-                    }
-            
-            logger.warning("Could not locate metadata in pyktok JSON payload for video ID: %s", video_id)
-            return None
         except Exception as exc:
-            logger.error("pyktok single video extraction failed for %s: %s", video_url, exc)
-            return None
+            logger.debug("pyktok single video extraction error for %s: %s", video_url, exc)
 
+        return None
 
     @staticmethod
     def _extract_video_id(url: str) -> Optional[str]:
