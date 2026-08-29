@@ -723,7 +723,7 @@ function showToast(message, icon = '✅') {
 // ── Database Loader ───────────────────────────────────
 async function loadDB() {
   try {
-    const r = await fetch('recipes_db.json');
+    const r = await fetch(`/recipes_db.json?t=${Date.now()}`, { cache: 'no-store' });
     db = await r.json();
   } catch(e) {
     console.error("Failed to load recipes db:", e);

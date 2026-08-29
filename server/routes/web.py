@@ -23,6 +23,10 @@ def get_db():
                     "fats": int(round(m.get("fats", 0))),
                     "calories": int(round(m.get("calories", 0)))
                 }
-        return jsonify(data)
+        resp = jsonify(data)
+        resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+        return resp
     except Exception as e:
         return jsonify({"error": str(e)}), 500
