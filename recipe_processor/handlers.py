@@ -105,6 +105,12 @@ class DescriptionParseHandler(BaseHandler):
 
 class TranscriptFetchHandler(BaseHandler):
     def handle(self, context: RecipeContext) -> None:
+        # Priority rule: Check description first! If valid ingredients were already extracted from description, skip audio/transcript download.
+        if context.ingredients and len(context.ingredients) >= 1:
+            logger.info("Ingredients already found in description for '%s' (%d items). Skipping audio/sound transcript.", context.recipe_id, len(context.ingredients))
+            self.next(context)
+            return
+
         # If Groq ran out of credits, skip transcript extraction and do not update last_processed
         if context.groq_out_of_credits:
             logger.warning("Groq credits depleted. Skipping transcript extraction for '%s'.", context.recipe_id)
@@ -125,7 +131,7 @@ class TranscriptFetchHandler(BaseHandler):
                 except Exception as exc:
                     logger.warning("Direct YouTube transcript fetch failed for '%s': %s", context.recipe_id, exc)
             else:
-                logger.info("Fetching Groq Whisper transcript for '%s'...", context.recipe_id)
+                logger.info("No ingredients in description for '%s'. Fetching video sound transcript...", context.recipe_id)
                 try:
                     from helpers.whisper_extractor import fetch_groq_whisper_transcript
                     transcript_text = fetch_groq_whisper_transcript(context.url)
@@ -133,15 +139,15 @@ class TranscriptFetchHandler(BaseHandler):
                     if transcript_text:
                         transcript_text = transcript_text.strip()
                         context.transcript = transcript_text
-                        logger.info("Groq Whisper transcript fetched (%d chars) for '%s'", len(transcript_text), context.recipe_id)
+                        logger.info("Video sound transcript fetched (%d chars) for '%s'", len(transcript_text), context.recipe_id)
                 except Exception as exc:
                     exc_str = str(exc).lower()
-                    if any(k in exc_str for k in ("429", "402", "rate limit", "credit", "quota", "insufficient")):
-                        logger.warning("Groq ran out of credits during Whisper transcription for '%s': %s. Processing description only and skipping last_processed update.", context.recipe_id, exc)
+                    if any(k in exc_str for k in ("429", "402", "rate limit", "credit", "quota", "insufficient", "403", "forbidden")):
+                        logger.warning("Whisper audio transcription unavailable/rate-limited for '%s': %s.", context.recipe_id, exc)
                         context.groq_out_of_credits = True
                         context.update_last_processed = False
                     else:
-                        logger.warning("Groq Whisper transcript fetch failed for '%s': %s", context.recipe_id, exc)
+                        logger.warning("Video sound transcript fetch failed for '%s': %s", context.recipe_id, exc)
 
         # If no ingredients were extracted from description, use the transcript for recipe parsing
         if not context.ingredients and context.transcript:
