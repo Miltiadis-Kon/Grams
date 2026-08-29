@@ -41,11 +41,14 @@ services:
     environment:
       # PostgreSQL connection — uses the service name as host
       DATABASE_URL: postgresql://${PG_USER:-grams}:${PG_PASSWORD:-grams}@postgres:5432/${PG_DB:-grams}
-      # Groq API key for recipe parsing
+      # Optional LLM API keys for recipe parsing
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       # Ollama (local LLM fallback)
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
+      - "80:5000"
       - "5000:5000"
     volumes:
       # Mount source for easy development — remove for production

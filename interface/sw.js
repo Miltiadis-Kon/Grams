@@ -1,7 +1,8 @@
-const CACHE_NAME = 'grams-cache-v1';
+const CACHE_NAME = 'grams-cache-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
+  '/css/style.css',
   '/baker.png',
   '/manifest.json'
 ];

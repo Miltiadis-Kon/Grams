@@ -102,10 +102,62 @@ def parse_recipe_with_llm(text: str) -> dict:
         f"Text:\n{text[:6000]}"
     )
 
+    gemini_api_key = os.environ.get("GEMINI_API_KEY")
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    groq_api_key = os.environ.get("GROQ_API_KEY")
+
     raw_text = ""
-    if groq_api_key:
+
+    # 1. Google Gemini API (Free tier from aistudio.google.com, VPN-friendly)
+    if gemini_api_key:
+        logger.info("GEMINI_API_KEY detected. Directing parsing request to Google Gemini.")
+        for gemini_model in ("gemini-2.0-flash", "gemini-1.5-flash"):
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_api_key}"
+            payload = _json.dumps({
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
+            }).encode("utf-8")
+            req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = _json.loads(resp.read().decode("utf-8"))
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        raw_text = parts[0].get("text", "").strip()
+                        break
+            except Exception as e:
+                logger.warning("Gemini model '%s' failed: %s", gemini_model, e)
+
+    # 2. OpenAI API
+    if not raw_text and openai_api_key:
+        logger.info("OPENAI_API_KEY detected. Directing parsing request to OpenAI.")
+        payload = _json.dumps({
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"}
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.openai.com/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {openai_api_key}"},
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = _json.loads(resp.read().decode("utf-8"))
+            choices = data.get("choices", [])
+            if choices:
+                raw_text = choices[0].get("message", {}).get("content", "").strip()
+        except Exception as e:
+            logger.warning("OpenAI parsing failed: %s", e)
+
+    # 3. Groq API
+    if not raw_text and groq_api_key:
         logger.info("GROQ_API_KEY detected. Directing parsing request to Groq API.")
-        groq_models = ["openai/gpt-oss-120b", "groq/compound-mini", "qwen/qwen3.6-27b", "openai/gpt-oss-20b"]
+        groq_models = ["openai/gpt-oss-120b", "groq/compound-mini", "qwen/qwen3.6-27b", "qwen/qwen3.8-27b", "openai/gpt-oss-20b", "groq/compound"]
         
         for model_name in groq_models:
             payload = _json.dumps({
@@ -183,16 +235,111 @@ def parse_recipe_with_llm(text: str) -> dict:
             method="POST",
         )
 
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            response_data = _json.loads(resp.read().decode("utf-8"))
-
-        raw_text = response_data.get("response", "").strip()
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                response_data = _json.loads(resp.read().decode("utf-8"))
+            raw_text = response_data.get("response", "").strip()
+        except Exception as exc:
+            logger.info("Ollama LLM unavailable (%s); using rule-based ingredient parser fallback.", exc)
+            return fallback_parse_recipe(text)
 
     match = re.search(r"(\{.*\})", raw_text, re.DOTALL)
     if match:
         raw_text = match.group(1)
 
-    return _json.loads(raw_text)
+    try:
+        return _json.loads(raw_text)
+    except Exception:
+        return fallback_parse_recipe(text)
+
+
+def fallback_parse_recipe(text: str) -> dict:
+    """
+    Rule-based recipe extractor using ingredient-parser and regex heuristics
+    when external LLM APIs (Groq/Ollama) are unavailable.
+    """
+    if not text:
+        return {"is_recipe": False, "title": "", "ingredients": [], "instructions": []}
+
+    from ingredient_parser import parse_ingredient
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    ingredients = []
+    instructions = []
+    title = ""
+
+    in_ingredients = False
+    in_instructions = False
+
+    for line in lines:
+        lower = line.lower()
+        if re.match(r'^(?:ingredients?|υλικά|υλικα)[:\-\s]*$', lower):
+            in_ingredients = True
+            in_instructions = False
+            continue
+        elif re.match(r'^(?:instructions?|directions?|steps?|method|εκτέλεση|εκτελεση)[:\-\s]*$', lower):
+            in_instructions = True
+            in_ingredients = False
+            continue
+
+        # Check if line looks like an ingredient
+        try:
+            parsed = parse_ingredient(line)
+            has_amount = parsed and parsed.amount and len(parsed.amount) > 0
+            has_name = parsed and parsed.name and len(parsed.name) > 0
+
+            if has_amount and has_name:
+                ing_name = " ".join([n.text for n in parsed.name]).strip()
+                ing_qty = " ".join([a.text for a in parsed.amount]).strip()
+                if ing_name:
+                    ingredients.append({"name": ing_name, "quantity": ing_qty or "1"})
+                    continue
+        except Exception:
+            pass
+
+        # Check for numbered instruction step
+        m_step = re.match(r'^(?:\d+[\.\)]\s*|[-•*]\s*)(.+)$', line)
+        if m_step and (in_instructions or len(ingredients) > 0):
+            step_text = m_step.group(1).strip()
+            if len(step_text) > 10:
+                instructions.append(step_text)
+                continue
+
+        if not title and not in_ingredients and not in_instructions and len(line) < 80 and not line.startswith('#'):
+            title = line
+
+    if len(ingredients) == 0:
+        # Fallback for continuous text / spoken transcripts without line breaks
+        NON_FOOD_TERMS = {
+            "protein", "carbs", "fats", "fat", "calories", "calorie", "kcal", "minutes", "minute", "seconds", "second",
+            "hours", "hour", "degrees", "celsius", "fahrenheit", "views", "likes", "subscribers", "video", "recipe",
+            "macros", "macro", "portion", "portions", "servings", "serving", "taste", "flavor", "step", "steps"
+        }
+        phrase_pattern = r'\b(\d+(?:[./]\d+)?\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces)?)\s+(?:of\s+)?([a-zA-Z\s]{3,35}?)(?=\band\b|\bthen\b|\bto\b|\bwith\b|\bfor\b|\bin\b|\binto\b|[,\.\n\(\)]|$)'
+
+        seen_ing_names = set()
+        for match in re.finditer(phrase_pattern, text, re.IGNORECASE):
+            qty = match.group(1).strip()
+            raw_name = match.group(2).strip()
+            clean_name = re.sub(r'^(?:fresh|chopped|diced|sliced|ground|low\s+fat|fat\s+free|boneless|skinless)\s+', '', raw_name, flags=re.IGNORECASE).strip()
+            name_words = set(clean_name.lower().split())
+            if not name_words or name_words.issubset(NON_FOOD_TERMS):
+                continue
+            if any(term in name_words for term in ["protein", "carbs", "calories", "kcal", "minutes", "seconds", "hours", "degrees"]):
+                continue
+            if len(clean_name) < 3:
+                continue
+            if clean_name.lower() not in seen_ing_names:
+                seen_ing_names.add(clean_name.lower())
+                ingredients.append({"name": raw_name, "quantity": qty or "1"})
+
+    is_recipe = len(ingredients) >= 1
+    return {
+        "is_recipe": is_recipe,
+        "title": title or "Extracted Recipe",
+        "ingredients": ingredients,
+        "instructions": instructions
+    }
 
 
 def sanitize_ingredients(ingredients: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS public.recipes (
     tags           JSONB DEFAULT '[]',
     added_on       TEXT,
     transcript     TEXT,
+    metadata       JSONB DEFAULT '{}',
     last_processed TIMESTAMPTZ DEFAULT NOW(),
     updated_at     TIMESTAMPTZ
 );
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS public.not_added_recipes (
     tags           JSONB DEFAULT '[]',
     added_on       TEXT,
     transcript     TEXT,
+    metadata       JSONB DEFAULT '{}',
     last_processed TIMESTAMPTZ DEFAULT NOW(),
     updated_at     TIMESTAMPTZ
 );
