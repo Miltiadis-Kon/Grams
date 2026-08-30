@@ -14,15 +14,14 @@ def fetch_groq_whisper_transcript(video_url: str) -> str:
 
     # Create a temporary directory to store the extracted audio
     with tempfile.TemporaryDirectory() as tmpdir:
-        audio_path = os.path.join(tmpdir, "extracted_audio.mp4")
+        output_template = os.path.join(tmpdir, "extracted_audio.%(ext)s")
         
-        # Use yt-dlp to download the smallest video track silently (since ffmpeg is not installed to extract audio)
-        # Groq Whisper accepts .mp4 natively
+        # Use yt-dlp to download the smallest stream silently (Groq Whisper accepts mp4, m4a, webm, mp3 natively)
         ydl_cmd = [
             "yt-dlp",
-            "-f", "worst[ext=mp4]", # Get smallest mp4 to save bandwidth
+            "-f", "worst/b/best",
             "--no-playlist",
-            "-o", audio_path,
+            "-o", output_template,
             video_url
         ]
         
@@ -32,15 +31,17 @@ def fetch_groq_whisper_transcript(video_url: str) -> str:
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"yt-dlp failed to download audio: {e}")
 
-        if not os.path.exists(audio_path):
-            raise FileNotFoundError("Audio extraction failed; file not found.")
+        downloaded_files = [os.path.join(tmpdir, f) for f in os.listdir(tmpdir) if os.path.isfile(os.path.join(tmpdir, f))]
+        if not downloaded_files:
+            raise FileNotFoundError("Audio extraction failed; no downloaded file found.")
+        audio_path = downloaded_files[0]
 
         # Read the file bytes to build a multipart form request
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
         
-        logger.info("Sending mp4 to Groq Whisper API for transcription...")
+        logger.info("Sending %s to Groq Whisper API for transcription...", os.path.basename(audio_path))
         with open(audio_path, "rb") as f:
-            files = {"file": (os.path.basename(audio_path), f, "video/mp4")}
+            files = {"file": (os.path.basename(audio_path), f, "application/octet-stream")}
             data = {"model": "whisper-large-v3", "response_format": "json"}
             
             response = requests.post(
