@@ -297,6 +297,11 @@ class RecipeValidator:
                 unit = std_unit
                 notes = f"{notes} ({col_note})".strip()
 
+            # If quantity contains a paren measure like '1 pack (150g)', extract the paren measure
+            m_paren = re.search(r'\(([\d\.]+\s*(?:g|gram|grams|kg|ml|l|tbsp|tsp|cup|oz|clove|slice))\)', qty, re.IGNORECASE)
+            if m_paren:
+                qty = m_paren.group(1)
+
             # Standardize fractions and numbers
             if not unit:
                 m_unit = re.search(r'\b(g|gram|grams|kg|ml|l|tbsp|tsp|cup|cups|oz|slice|slices|clove|cloves|pinch|pinches)\b', qty, re.IGNORECASE)

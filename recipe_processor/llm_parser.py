@@ -120,7 +120,16 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
 
     from ingredient_parser import parse_ingredient
 
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    # Pre-process and normalize delimiters often found in TikTok / Instagram posts
+    norm_text = text
+    # Convert inline bullets (' - ', ' • ', ' * ') to newlines
+    norm_text = re.sub(r'\s*[\-•*]\s+', '\n- ', norm_text)
+    # Split section headers into separate lines
+    norm_text = re.sub(r'(?i)\b(ingredients?|υλικά|υλικα|instructions?|directions?|method|steps?|εκτέλεση|εκτελεση|key points?|notes?|servings?|portion)[:\s]+', r'\n\1:\n', norm_text)
+    # Split numbered steps (e.g. "1. Cut the chicken... 2. Heat oil...")
+    norm_text = re.sub(r'(?<=[.!?])\s+(?=\d+[\.\)]\s+[A-Z0-9])', '\n', norm_text)
+
+    lines = [line.strip() for line in norm_text.splitlines() if line.strip()]
     ingredients = []
     instructions = []
     title = ""
@@ -158,20 +167,35 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
         if re.match(r'^(?:macros|nutrition|calories|servings|serving size)[:\s]', lower):
             continue
 
+        # Clean leading bullet or numbering markers
+        clean_line = re.sub(r'^(?:[-•*:]\s*|\d+[\.\)]\s*)', '', line).strip()
+        clean_lower = clean_line.lower()
+
         # Check for instruction sentences
-        if in_instructions or (len(ingredients) > 0 and len(line) > 55 and (line.endswith('.') or line.endswith('!') or any(kw in lower for kw in ['mix', 'bake', 'heat', 'cook', 'add', 'serve', 'pan', 'oven', 'air fry', 'blend', 'whisk']))):
+        if in_instructions or (len(ingredients) > 0 and len(clean_line) > 55 and (clean_line.endswith('.') or clean_line.endswith('!') or any(kw in clean_lower for kw in ['mix', 'bake', 'heat', 'cook', 'add', 'serve', 'pan', 'oven', 'air fry', 'blend', 'whisk']))):
             in_instructions = True
-            step = re.sub(r'^(?:step\s*\d+[:\-\.]\s*|\d+[\.\)]\s*|[-•*]\s*)', '', line).strip()
+            step = clean_line
             if len(step) > 8 and not step.startswith('---') and "disclaimer" not in step.lower():
                 instructions.append(step)
             continue
 
+        # Handle 'Name: Quantity' pattern (e.g. 'Chicken thighs: 120g', 'Udon noodles: 1 pack (150g)', 'Salt: a pinch')
+        if ":" in clean_line and not any(k in clean_lower for k in ["http", "servings", "method", "ingredients", "instructions", "notes", "disclaimer"]):
+            parts = clean_line.split(":", 1)
+            p_name = parts[0].strip()
+            p_qty = parts[1].strip()
+            # Clean trailing brackets/emojis from qty
+            p_qty = re.sub(r'\[.*?\]|[^\x00-\x7F]+', '', p_qty).strip()
+            if RecipeValidator.is_valid_food_name(p_name):
+                ingredients.append({"name": p_name, "quantity": p_qty or "1"})
+                continue
+
         # Try parsing line as ingredient
-        if qty_regex.match(line) or (len(line) < 50 and not line.endswith('.')):
+        if qty_regex.match(clean_line) or (len(clean_line) < 50 and not clean_line.endswith('.')):
             parsed_name = ""
             parsed_qty = "1"
             try:
-                parsed = parse_ingredient(line)
+                parsed = parse_ingredient(clean_line)
                 has_amount = parsed and parsed.amount and len(parsed.amount) > 0
                 has_name = parsed and parsed.name and len(parsed.name) > 0
 
@@ -182,19 +206,19 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
                 pass
 
             if not parsed_name:
-                m = re.match(r'^((?:\d+(?:[./]\d+)?|\u00bc|\u00bd|\u00be|\u2153|\u2154|\d+\s*-\s*\d+)\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces|pinch|pinches|serving|servings|portion|portions|splash|glug|handful)?)\s*(?:of\s+)?(.*)$', line, re.IGNORECASE)
+                m = re.match(r'^((?:\d+(?:[./]\d+)?|\u00bc|\u00bd|\u00be|\u2153|\u2154|\d+\s*-\s*\d+)\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces|pinch|pinches|serving|servings|portion|portions|splash|glug|handful)?)\s*(?:of\s+)?(.*)$', clean_line, re.IGNORECASE)
                 if m:
                     parsed_qty = m.group(1).strip()
                     parsed_name = m.group(2).strip()
-                elif len(line) < 40 and not line.endswith('.'):
-                    parsed_name = line
+                elif len(clean_line) < 40 and not clean_line.endswith('.'):
+                    parsed_name = clean_line
                     parsed_qty = "1"
 
             if RecipeValidator.is_valid_food_name(parsed_name):
                 ingredients.append({"name": parsed_name, "quantity": parsed_qty or "1"})
         else:
-            if len(line) > 15 and not line.startswith('---'):
-                instructions.append(line)
+            if len(clean_line) > 15 and not clean_line.startswith('---'):
+                instructions.append(clean_line)
 
     # In-line entity hunting for narrative transcripts where ingredients are spoken within sentences
     if len(ingredients) < 3:
