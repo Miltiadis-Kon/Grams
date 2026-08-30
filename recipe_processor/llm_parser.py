@@ -119,9 +119,26 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
         return {"is_recipe": False, "title": "", "ingredients": [], "instructions": []}
 
     from ingredient_parser import parse_ingredient
+    from helpers.nutrition import NutritionAnalyzer
+    nutri = NutritionAnalyzer()
 
     # Pre-process and normalize delimiters often found in TikTok / Instagram posts
     norm_text = text
+
+    # Strip out any [English Translation] headers before parsing
+    norm_text = re.sub(r'\[English Translation\].*?(?=(?:\n\n|\Z))', '', norm_text, flags=re.DOTALL)
+
+    # Greek text delimiter normalization
+    has_greek = bool(re.search(r'[\u0370-\u03ff\u1f00-\u1fff]', norm_text))
+    if has_greek:
+        norm_text = re.sub(r'(\d+)\s*(γρ|γρ\.|κιλά|κ\.σ\.|κ\.γ\.|κουταλιές|τεμ|τεμάχια|ml|g|kg)', r'\1 \2', norm_text, flags=re.IGNORECASE)
+        if 'υλικά' in norm_text.lower() or 'υλικα' in norm_text.lower():
+            parts = re.split(r'(?i)(?:υλικά|υλικα)[:\s]*', norm_text, maxsplit=1)
+            body = parts[1]
+            body = re.sub(r'\s+(\d+\s*(?:μεγάλες|μικρές|φέτες|κ\.σ\.|κ\.γ\.|γρ|κιλά|κουταλιές|αυγά)?\s*[Α-Ωα-ωά-ώ]+)', r'\n- \1', body)
+            body = re.sub(r'\s+(Αλάτι|Πιπέρι|Ελαιόλαδο|Ρίγανη|Σκόρδο|Μαϊντανός|Άνηθος)', r'\n- \1', body)
+            norm_text = f"{parts[0]}\nΥλικά:\n{body}"
+
     # Convert inline bullets (' - ', ' • ', ' * ') to newlines
     norm_text = re.sub(r'\s*[\-•*]\s+', '\n- ', norm_text)
     # Split section headers into separate lines
@@ -137,7 +154,7 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
     in_instructions = False
 
     qty_regex = re.compile(
-        r'^(?:(?:\d+(?:[./]\d+)?|\u00bc|\u00bd|\u00be|\u2153|\u2154|\d+\s*-\s*\d+)\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces|pinch|pinches|serving|servings|portion|portions|splash|glug|handful)?\b|salt\b|pepper\b|black pepper\b|seasonings?\b)',
+        r'^(?:(?:\d+(?:[./]\d+)?|\u00bc|\u00bd|\u00be|\u2153|\u2154|\d+\s*-\s*\d+)\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces|pinch|pinches|serving|servings|portion|portions|splash|glug|handful|γρ|κιλά|κ\.σ\.|κ\.γ\.|κουταλιές|τεμ)?\b|salt\b|pepper\b|black pepper\b|seasonings?\b|αλάτι\b|πιπέρι\b|ελαιόλαδο\b|ρίγανη\b)',
         re.IGNORECASE
     )
 
@@ -145,7 +162,7 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
         lower = line.lower()
 
         # Skip translation and transcript metadata headers
-        if line.startswith('[') and line.endswith(']'):
+        if (line.startswith('[') and line.endswith(']')) or lower in ['υλικά', 'υλικα', 'materials', 'ingredients']:
             continue
 
         # Skip call-to-action / engagement prompts
@@ -186,6 +203,8 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
             p_qty = parts[1].strip()
             # Clean trailing brackets/emojis from qty
             p_qty = re.sub(r'\[.*?\]|[^\x00-\x7F]+', '', p_qty).strip()
+            if re.search(r'[\u0370-\u03ff\u1f00-\u1fff]', p_name):
+                p_name = nutri._translate_if_greek(p_name)
             if RecipeValidator.is_valid_food_name(p_name):
                 ingredients.append({"name": p_name, "quantity": p_qty or "1"})
                 continue
@@ -194,25 +213,45 @@ def fallback_parse_recipe(text: str) -> Dict[str, Any]:
         if qty_regex.match(clean_line) or (len(clean_line) < 50 and not clean_line.endswith('.')):
             parsed_name = ""
             parsed_qty = "1"
-            try:
-                parsed = parse_ingredient(clean_line)
-                has_amount = parsed and parsed.amount and len(parsed.amount) > 0
-                has_name = parsed and parsed.name and len(parsed.name) > 0
 
-                if has_amount and has_name:
-                    parsed_name = " ".join([n.text for n in parsed.name]).strip()
-                    parsed_qty = " ".join([a.text for a in parsed.amount]).strip()
-            except Exception:
-                pass
+            # Greek ingredient format (e.g. "3 μεγάλες Πατάτες", "100 γρ Ντοματίνια", "Ελαιόλαδο")
+            m_greek = re.match(r'^((?:\d+(?:[./]\d+)?|\d+\s*-\s*\d+)?\s*(?:μεγάλες|μικρές|φέτες|γρ|κιλά|κ\.σ\.|κ\.γ\.|κουταλιές|τεμ|τεμάχια)?)\s*(.*)$', clean_line, re.IGNORECASE)
+            if has_greek and m_greek and m_greek.group(2).strip():
+                g_qty = m_greek.group(1).strip()
+                g_name = m_greek.group(2).strip()
+                parsed_name = nutri._translate_if_greek(g_name)
+                parsed_qty = g_qty or "1"
+            else:
+                try:
+                    parsed = parse_ingredient(clean_line)
+                    has_amount = parsed and parsed.amount and len(parsed.amount) > 0
+                    has_name = parsed and parsed.name and len(parsed.name) > 0
 
-            if not parsed_name:
-                m = re.match(r'^((?:\d+(?:[./]\d+)?|\u00bc|\u00bd|\u00be|\u2153|\u2154|\d+\s*-\s*\d+)\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces|pinch|pinches|serving|servings|portion|portions|splash|glug|handful)?)\s*(?:of\s+)?(.*)$', clean_line, re.IGNORECASE)
-                if m:
-                    parsed_qty = m.group(1).strip()
-                    parsed_name = m.group(2).strip()
-                elif len(clean_line) < 40 and not clean_line.endswith('.'):
-                    parsed_name = clean_line
-                    parsed_qty = "1"
+                    if has_amount and has_name:
+                        parsed_name = " ".join([n.text for n in parsed.name]).strip()
+                        parsed_qty = " ".join([a.text for a in parsed.amount]).strip()
+                except Exception:
+                    pass
+
+                if not parsed_name:
+                    m = re.match(r'^((?:\d+(?:[./]\d+)?|\u00bc|\u00bd|\u00be|\u2153|\u2154|\d+\s*-\s*\d+)\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces|pinch|pinches|serving|servings|portion|portions|splash|glug|handful)?)\s*(?:of\s+)?(.*)$', clean_line, re.IGNORECASE)
+                    if m:
+                        parsed_qty = m.group(1).strip()
+                        parsed_name = m.group(2).strip()
+                    elif len(clean_line) < 40 and not clean_line.endswith('.'):
+                        parsed_name = clean_line
+                        parsed_qty = "1"
+
+            if re.search(r'[\u0370-\u03ff\u1f00-\u1fff]', parsed_name):
+                parsed_name = nutri._translate_if_greek(parsed_name)
+
+            # Standardize Greek units
+            parsed_qty = re.sub(r'\bγρ\.?\b', 'g', parsed_qty)
+            parsed_qty = re.sub(r'\bκιλά\b', 'kg', parsed_qty)
+            parsed_qty = re.sub(r'\bκ\.σ\.?\b', 'tbsp', parsed_qty)
+            parsed_qty = re.sub(r'\bκ\.γ\.?\b', 'tsp', parsed_qty)
+            parsed_qty = re.sub(r'\bκουταλιές?\b', 'tbsp', parsed_qty)
+            parsed_qty = re.sub(r'\b(?:μεγάλες|μικρές|φέτες|αυγά)\b', '', parsed_qty).strip()
 
             if RecipeValidator.is_valid_food_name(parsed_name):
                 ingredients.append({"name": parsed_name, "quantity": parsed_qty or "1"})

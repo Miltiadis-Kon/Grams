@@ -375,6 +375,7 @@ def clean_and_fix_all_recipes():
     from helpers.tagger import AutoTagger
     from database.models import Recipe, MacroNutrients
     from recipe_processor.validator import RecipeValidator
+    from recipe_processor.llm_parser import parse_recipe_with_llm
 
     tagger = AutoTagger()
     fixed_count = 0
@@ -461,43 +462,10 @@ def clean_and_fix_all_recipes():
         url = r.get("url", "")
         added_on = r.get("added_on", "")
 
-        # 2. Standard Single Recipe Processing
-        cleaned_desc = clean_raw_description(orig_desc)
-        paragraphs = [p.strip() for p in cleaned_desc.split('\n\n') if p.strip()]
-
-        ingredients = []
-        instructions = []
-
-        qty_regex = re.compile(
-            r'^(?:(?:\d+(?:[./]\d+)?|\u00bc|\u00bd|\u00be|\u2153|\u2154|\d+\s*-\s*\d+)\s*(?:g|gram|grams|kg|ml|l|liter|liters|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cup|cups|scoop|scoops|oz|ounce|ounces|clove|cloves|slice|slices|can|cans|piece|pieces|pinch|pinches|serving|servings|portion|portions)?\b|salt\b|pepper\b|black pepper\b|seasonings?\b)',
-            re.IGNORECASE
-        )
-
-        for p in paragraphs:
-            p_lines = [pl.strip() for pl in p.splitlines() if pl.strip()]
-            has_qty = sum(1 for pl in p_lines if qty_regex.match(pl) or (len(pl) < 55 and not pl.endswith('.')))
-
-            if has_qty >= len(p_lines) * 0.5 and len(p_lines) > 0 and len(p) < 700:
-                for pl in p_lines:
-                    if re.match(r'^(?:macros|nutrition|calories|servings|serving size)[:\s]', pl.lower()):
-                        continue
-                    if len(pl) > 85:
-                        continue
-                    # Split plus lines (e.g. 10g honey + 10g mustard)
-                    if "+" in pl and not any(k in pl.lower() for k in ["flour", "powder"]):
-                        for sub_item in pl.split("+"):
-                            parsed_ing = parse_line_as_ingredient(sub_item)
-                            if parsed_ing:
-                                ingredients.append(parsed_ing)
-                    else:
-                        parsed_ing = parse_line_as_ingredient(pl)
-                        if parsed_ing:
-                            ingredients.append(parsed_ing)
-            else:
-                if len(p) > 20 and not instructions:
-                    clean_p = re.sub(r'^instructions:?\s*', '', p, flags=re.IGNORECASE).strip()
-                    if clean_p and not any(j in clean_p.lower() for j in ["disclaimer:", "amazon links", "cookbook"]):
-                        instructions.append(clean_p)
+        # 2. Standard Single Recipe Processing via Canonical LLM/NLP Pipeline
+        parsed = parse_recipe_with_llm(orig_desc)
+        ingredients = parsed.get("ingredients", [])
+        instructions = parsed.get("instructions", [])
 
         if not instructions:
             instructions = ["Follow video instructions for preparation and cooking."]

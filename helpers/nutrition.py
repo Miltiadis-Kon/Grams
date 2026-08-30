@@ -102,32 +102,112 @@ class NutritionAnalyzer:
 
     # ── Public API ───────────────────────────────────
 
+    GREEK_CULINARY_DICTIONARY = {
+        # Vegetables & Produce
+        "πατάτες": "potato", "πατάτα": "potato", "πατατες": "potato", "πατατα": "potato",
+        "γλυκοπατάτα": "sweet potato", "γλυκοπατάτες": "sweet potato", "γλυκοπατατα": "sweet potato", "γλυκοπατατες": "sweet potato",
+        "ντομάτα": "tomato", "ντομάτες": "tomato", "ντοματα": "tomato", "ντοματες": "tomato",
+        "ντοματίνια": "cherry tomatoes", "ντοματινια": "cherry tomatoes",
+        "πιπεριά": "bell pepper", "πιπεριές": "bell pepper", "πιπερια": "bell pepper", "πιπεριες": "bell pepper",
+        "πιπεριά φλωρίνης": "red bell pepper", "πιπερια φλωρινης": "red bell pepper",
+        "κρεμμύδι": "onion", "κρεμμύδια": "onion", "κρεμμυδι": "onion", "κρεμμυδια": "onion",
+        "σκόρδο": "garlic", "σκόρδα": "garlic", "σκορδο": "garlic",
+        "πράσο": "leek", "πρασο": "leek",
+        "μελιτζάνα": "eggplant", "μελιτζάνες": "eggplant", "μελιτζανα": "eggplant", "μελιτζανες": "eggplant",
+        "κολοκυθάκια": "zucchini", "κολοκυθάκι": "zucchini", "κολοκύθι": "zucchini", "κολοκυθακια": "zucchini", "κολοκυθι": "zucchini",
+        "μπρόκολο": "broccoli", "μπροκολο": "broccoli",
+        "κουνουπίδι": "cauliflower", "κουνουπιδι": "cauliflower",
+        "σπανάκι": "spinach", "σπανακι": "spinach",
+        "μανιτάρια": "mushrooms", "μανιταρια": "mushrooms",
+        "αγγούρι": "cucumber", "αγγουρι": "cucumber",
+        "μαρούλι": "lettuce", "μαρουλι": "lettuce",
+        "καρότο": "carrot", "καρότα": "carrots", "καροτο": "carrot", "καροτα": "carrots",
+        "αβοκάντο": "avocado", "αβοκαντο": "avocado",
+
+        # Meats, Poultry & Seafood
+        "αυγά": "egg", "αυγό": "egg", "αυγα": "egg", "αυγο": "egg",
+        "ασπράδι": "egg white", "ασπράδια": "egg whites", "ασπραδι": "egg white", "ασπραδια": "egg whites",
+        "κοτόπουλο": "chicken breast", "κοτοπουλο": "chicken breast",
+        "στήθος κοτόπουλο": "chicken breast", "στηθος κοτοπουλο": "chicken breast", "στήθος κοτόπουλου": "chicken breast",
+        "μπούτι κοτόπουλο": "chicken thigh", "μπουτι κοτοπουλο": "chicken thigh", "μπούτι κοτόπουλου": "chicken thigh",
+        "κιμάς": "ground beef", "κιμας": "ground beef", "κιμάς μοσχαρίσιος": "ground beef", "κιμας μοσχαρισιος": "ground beef",
+        "μοσχαρίσιος κιμάς": "ground beef", "μοσχαρισιος κιμας": "ground beef", "κιμάς κοτόπουλο": "ground chicken",
+        "μοσχάρι": "beef", "μοσχαρι": "beef", "βοδινό": "beef", "βοδινο": "beef",
+        "χοιρινό": "pork", "χοιρινο": "pork", "γαλοπούλα": "turkey", "γαλοπουλα": "turkey",
+        "μπέικον": "bacon", "μπεικον": "bacon", "λουκάνικο": "sausage", "λουκανικο": "sausage",
+        "τόνος": "tuna", "τονος": "tuna", "σολομός": "salmon", "σολομος": "salmon",
+        "γαρίδες": "shrimp", "γαριδες": "shrimp", "μπακαλιάρος": "cod fish", "μπακαλιαρος": "cod fish",
+
+        # Dairy, Fats & Oils
+        "ελαιόλαδο": "olive oil", "ελαιολαδο": "olive oil", "λάδι": "olive oil", "λαδι": "olive oil", "λάδι ελιάς": "olive oil",
+        "βούτυρο": "butter", "βουτυρο": "butter",
+        "φέτα": "feta cheese", "τυρί φέτα": "feta cheese", "τυρι φετα": "feta cheese", "φετα": "feta cheese",
+        "τυρί": "cheese", "τυρι": "cheese", "τριμμένο τυρί": "grated cheese", "τριμμενο τυρι": "grated cheese",
+        "μοτσαρέλα": "mozzarella cheese", "μοτσαρελα": "mozzarella cheese", "γραβιέρα": "gruyere cheese", "γραβιερα": "gruyere cheese",
+        "κασέρι": "yellow cheese", "κασερι": "yellow cheese", "παρμεζάνα": "parmesan cheese", "παρμεζανα": "parmesan cheese",
+        "ανθότυρο": "ricotta cheese", "ανθοτυρο": "ricotta cheese",
+        "γιαούρτι": "greek yogurt", "γιαουρτι": "greek yogurt", "στραγγιστό γιαούρτι": "greek yogurt", "στραγγιστο γιαουρτι": "greek yogurt",
+        "γάλα": "milk", "γαλα": "milk", "κρέμα γάλακτος": "heavy cream", "κρεμα γαλακτος": "heavy cream",
+
+        # Grains, Bakery & Legumes
+        "ψωμί": "bread", "ψωμι": "bread", "ψωμί του τοστ": "sandwich bread", "ψωμι του τοστ": "sandwich bread",
+        "ψωμάκια": "buns", "ψωμακια": "buns", "τορτίγια": "tortilla wrap", "τορτιγια": "tortilla wrap",
+        "τορτίγιες": "tortilla wrap", "τορτιγιες": "tortilla wrap", "πίτα": "pita bread", "πιτα": "pita bread",
+        "αλεύρι": "all-purpose flour", "αλευρι": "all-purpose flour", "βρώμη": "rolled oats", "βρωμη": "rolled oats",
+        "νιφάδες βρώμης": "rolled oats", "νιφαδες βρωμης": "rolled oats", "ρύζι": "white rice", "ρυζι": "white rice",
+        "φακόρυζο": "rice with lentils", "μακαρόνια": "pasta", "μακαρονια": "pasta", "ζυμαρικά": "pasta", "ζυμαρικα": "pasta",
+        "σπαγγέτι": "spaghetti", "σπαγγετι": "spaghetti", "πέννες": "penne pasta", "πεννες": "penne pasta",
+        "φακές": "lentils", "φακες": "lentils", "φασόλια": "beans", "φασολια": "beans", "ρεβύθια": "chickpeas", "ρεβυθια": "chickpeas",
+
+        # Spices, Seasonings & Sweeteners
+        "αλάτι": "salt", "αλατι": "salt", "πιπέρι": "black pepper", "πιπερι": "black pepper",
+        "πάπρικα": "paprika", "παπρικα": "paprika", "ρίγανη": "oregano", "ριγανη": "oregano",
+        "μαϊντανός": "fresh parsley", "μαιντανος": "fresh parsley", "άνηθος": "fresh dill", "ανηθος": "fresh dill",
+        "βασιλικός": "fresh basil", "βασιλικος": "fresh basil", "κανέλα": "cinnamon", "κανελα": "cinnamon",
+        "μέλι": "honey", "μελι": "honey", "μουστάρδα": "mustard", "μουσταρδα": "mustard",
+        "κέτσαπ": "ketchup", "κετσαπ": "ketchup", "μαγιονέζα": "mayonnaise", "μαγιονεζα": "mayonnaise",
+        "ταχίνι": "tahini", "ταχινι": "tahini", "φυστικοβούτυρο": "peanut butter", "φυστικοβουτυρο": "peanut butter",
+        "ζάχαρη": "sugar", "ζαχαρη": "sugar", "κακάο": "cocoa powder", "κακαο": "cocoa powder",
+        "σοκολάτα": "chocolate", "σοκολατα": "chocolate",
+        "μπανάνα": "banana", "μπανανα": "banana", "μπανάνες": "banana", "μπανανες": "banana",
+        "μήλο": "apple", "μηλο": "apple", "μήλα": "apples", "μηλα": "apples",
+        "φράουλες": "strawberries", "φραουλες": "strawberries", "μύρτιλα": "blueberries", "μυρτιλα": "blueberries"
+    }
+
     def _translate_if_greek(self, text: str) -> str:
-        """Translate text to English if it contains Greek characters."""
+        """Translate text to English if it contains Greek characters using local dictionary first."""
         if not text:
             return text
+
         # Detect Greek characters
         if re.search(r'[\u0370-\u03ff\u1f00-\u1fff]', text):
+            cleaned_text = text.strip().lower()
+            # 1. Check offline dictionary for full match or word replacement
+            if cleaned_text in self.GREEK_CULINARY_DICTIONARY:
+                return self.GREEK_CULINARY_DICTIONARY[cleaned_text]
+
+            for g_term, en_term in self.GREEK_CULINARY_DICTIONARY.items():
+                if g_term in cleaned_text:
+                    return en_term
+
+            # 2. Try online translator with cache
             try:
                 if not hasattr(self, '_translator'):
                     self._translator = Translator(from_lang="el", to_lang="en")
                 if not hasattr(self, '_translation_cache'):
                     self._translation_cache = {}
-                
-                cleaned_text = text.strip().lower()
+
                 if cleaned_text in self._translation_cache:
                     return self._translation_cache[cleaned_text]
-                
+
                 translated = self._translator.translate(text)
-                if translated and "mymemory warning" in translated.lower():
-                    logger.warning("MyMemory translation limit warning encountered for '%s': %s", text, translated)
-                    return text  # fallback to original Greek text
-                
-                logger.info("Translated Greek ingredient '%s' to English '%s'", text, translated)
-                self._translation_cache[cleaned_text] = translated
-                return translated
+                if translated and "mymemory warning" not in translated.lower():
+                    logger.info("Translated Greek ingredient '%s' to English '%s'", text, translated)
+                    self._translation_cache[cleaned_text] = translated
+                    return translated
             except Exception as exc:
-                logger.warning("Translation failed for '%s': %s", text, exc)
+                logger.debug("Translation failed for '%s': %s", text, exc)
+
         return text
 
     def _query_usda_sqlite(self, query_en: str) -> Optional[dict]:
@@ -377,13 +457,21 @@ class NutritionAnalyzer:
                 "protein_g": 25.0, "carbs_g": 14.0, "fat_g": 50.0, "energy_kcal": 590.0
             },
             # Produce & Breads
-            r'\b(?:potatoes?|russet\s+potatoes?|baby\s+potatoes?)\b': {
+            r'\b(?:potato|potatoes|russet\s+potatoes?|baby\s+potatoes?)\b': {
                 "id": "ciqual_4003", "name": "Potato, raw",
                 "protein_g": 2.0, "carbs_g": 17.5, "fat_g": 0.1, "energy_kcal": 80.0
             },
-            r'\b(?:sweet\s+potatoes?)\b': {
+            r'\b(?:sweet\s+potato|sweet\s+potatoes)\b': {
                 "id": "ciqual_4005", "name": "Sweet potato, raw",
                 "protein_g": 1.6, "carbs_g": 20.0, "fat_g": 0.1, "energy_kcal": 86.0
+            },
+            r'\b(?:tomato|tomatoes|cherry\s+tomatoes?|roma\s+tomatoes?)\b': {
+                "id": "ciqual_20047", "name": "Tomato, cherry, raw",
+                "protein_g": 0.9, "carbs_g": 3.9, "fat_g": 0.2, "energy_kcal": 21.0
+            },
+            r'\b(?:feta|feta\s+cheese|greek\s+feta)\b': {
+                "id": "ciqual_12115", "name": "Feta cheese, 70% min. from ewe's milk, 30% min. from goat's milk",
+                "protein_g": 17.0, "carbs_g": 0.5, "fat_g": 23.0, "energy_kcal": 287.0
             },
             r'\b(?:bell\s+peppers?|red\s+bell\s+peppers?|green\s+bell\s+peppers?|yellow\s+bell\s+peppers?|peppers?)\b': {
                 "id": "ciqual_20042", "name": "Bell pepper, red, raw",
@@ -984,12 +1072,13 @@ class NutritionAnalyzer:
                         return cnt * 50.0
                     return cnt
 
-                # Small count (< 10)
                 if "egg white" in c_name:
                     return cnt * 33.0
                 elif "egg" in c_name:
                     return cnt * 50.0
-                elif any(kw in c_name for kw in ["salt", "pepper", "powder", "paprika", "spice", "herb", "seasoning", "cinnamon"]):
+                elif any(kw in c_name for kw in ["onion", "apple", "banana", "potato", "avocado", "bell pepper"]):
+                    return cnt * 150.0
+                elif any(kw in c_name for kw in ["salt", "black pepper", "ground pepper", "powder", "paprika", "spice", "herb", "seasoning", "cinnamon"]):
                     return cnt * 1.0
                 elif any(kw in c_name for kw in ["oil", "butter", "sauce", "mustard", "honey", "sriracha", "vinegar"]):
                     return cnt if cnt >= 3 else cnt * 10.0
@@ -997,8 +1086,6 @@ class NutritionAnalyzer:
                     return cnt * 5.0
                 elif any(kw in c_name for kw in ["bun", "tortilla", "wrap", "slice", "cookie", "muffin"]):
                     return cnt * 50.0
-                elif any(kw in c_name for kw in ["onion", "apple", "banana", "potato", "avocado", "bell pepper"]):
-                    return cnt * 150.0
                 return cnt * 100.0
 
         qty = 1.0
